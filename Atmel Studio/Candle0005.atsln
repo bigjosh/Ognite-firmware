@@ -1,0 +1,23 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 11.00
+# Atmel Studio Solution File, Format Version 11.00
+Project("{54F91283-7BC4-4236-8FF9-10F437C3AD48}") = "Candle0005", "Candle0005.cproj", "{61DDA9C2-D07D-4D75-BEAA-5BC0E84F9D1E}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|AVR = Debug|AVR
+		Generate ASM|AVR = Generate ASM|AVR
+		Release|AVR = Release|AVR
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{61DDA9C2-D07D-4D75-BEAA-5BC0E84F9D1E}.Debug|AVR.ActiveCfg = Debug|AVR
+		{61DDA9C2-D07D-4D75-BEAA-5BC0E84F9D1E}.Debug|AVR.Build.0 = Debug|AVR
+		{61DDA9C2-D07D-4D75-BEAA-5BC0E84F9D1E}.Generate ASM|AVR.ActiveCfg = Generate ASM|AVR
+		{61DDA9C2-D07D-4D75-BEAA-5BC0E84F9D1E}.Generate ASM|AVR.Build.0 = Generate ASM|AVR
+		{61DDA9C2-D07D-4D75-BEAA-5BC0E84F9D1E}.Release|AVR.ActiveCfg = Release|AVR
+		{61DDA9C2-D07D-4D75-BEAA-5BC0E84F9D1E}.Release|AVR.Build.0 = Release|AVR
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

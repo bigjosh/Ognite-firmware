@@ -9,6 +9,8 @@
 	09/21/13 - Reversed matrix lookup table to cancel out mirrored physical boards. Boards got mirrored accidentally and easier to change software than reprint.
 	09/22/13 - Reversed the rowDirectionBits to fix the mess caused by the previous change. Argh.  
 	09/26/13 - First GitHub commit
+	09/26/13 - Adding test mode on that will show a test pattern whenever PD5 (pin 9) is connected to the GRD pin next to it (pin normally pulled high internally).
+
 	
 
 */

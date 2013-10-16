@@ -10,14 +10,10 @@
 	09/22/13 - Reversed the rowDirectionBits to fix the mess caused by the previous change. Argh.  
 	09/26/13 - First GitHub commit
 	09/26/13 - Adding test mode on that will show a test pattern whenever PD5 (pin 9) is connected to the GRD pin next to it (pin normally pulled high internally).
-
-	
-
+	      
 */
 
 #define F_CPU 8000000UL  // We will be at 8 MHz once we get all booted up and get rid of the prescaller
-
-#include <util/delay.h>	 // needed for delay_ms()
 
 #include <avr/io.h>
 
@@ -25,15 +21,21 @@
 
 #include <avr/interrupt.h>
 
-#define FRAME_RATE 15		// Frames per second
+#include <string.h>
+
+typedef unsigned char byte;			// Define a byte
+typedef unsigned int word;			// Define a word
+
+#define FRAME_RATE 15				// Frames per second
 
 #define	WIDTH 	5
 #define	HEIGHT	8
-#define	FRAMES	195
 
-#define byte unsigned char
+typedef byte framecounttype;		// Define this type in case we ever go over 255 frames we can switch to an unsigned int
 
-PROGMEM unsigned char const candle_bitstream[]  = {
+#define	FRAMECOUNT	((framecounttype) 195)
+
+PROGMEM byte const candle_bitstream[]  = {
 	0xaa,0x2f,0x61,0xf8,0x1b,0xe6,0x7f,0x64,0xf9,0x17,
 	0xe6,0x6f,0xa3,0x9d,0x27,0xb2,0xa2,0x0e,0x85,0x22,
 	0xb6,0x2d,0x10,0x5e,0x5f,0x2c,0xba,0x15,0xa2,0x4b,
@@ -280,14 +282,16 @@ PROGMEM unsigned char const candle_bitstream[]  = {
 
 // Convert 5 bit brightness into 8 bit LED duty cycle
 
-PROGMEM unsigned char const dutyCycle32[] = {
-	0,     1,     2,     3,      4,     5,     7,     9,    12,
+// TODO: THis has one extra value at the end? 
+
+PROGMEM byte const dutyCycle32[32] = {
+	0,     1 ,     2,     3,     4,     5,     7,     9,    12,
 	15,    18,    22,    27,    32,    38,    44,    51,    58,
 	67,    76,    86,    96,   108,   120,   134,   148,   163,
 	180,   197,   216,   235,   255,
 };
 
-#include <stdlib.h>
+#define getDutyCycle(b) (pgm_read_byte_near(dutyCycle32+b))
 
 #define FDA_X_MAX 5
 #define FDA_Y_MAX 8
@@ -295,10 +299,12 @@ PROGMEM unsigned char const dutyCycle32[] = {
 #define FDA_SIZE (FDA_X_MAX*FDA_Y_MAX)
 
 // This is the display array!
-// Array of duty cycles levels. Not gamma corrected. Brightness (0=off,  255=brightest)
+// Array of duty cycles levels. Brightness (0=off,  255=brightest)
 // Anything you put in here will show up on the screen
 
 // Now fda is linear - with x then y for easy scanning in x direction
+
+// Graph paper style - x goes left to right, y goes bottom to top 
 
 byte fda[FDA_SIZE];
 
@@ -309,7 +315,7 @@ void fdaInit() {
 	// set all rows and cols to Hi-Z so nothing shows up on the screen
 
 	DDRB = 0;
-	PORTB= 0;
+	PORTB= 0;        
 
 	DDRD = 0;
 	PORTD =0;
@@ -337,38 +343,20 @@ void initInt()
 
 	cli();           // disable all interrupts
 	
-	
-	#ifdef ARDUNIO
-	
-	
-		TCCR1A = 0;
-		TCCR1B = 0;
-		TCNT1  = 0;
-
-		OCR1A = 15;					// compare match register every 256 (prescaler) * 15 (compare) ticks = ~4Khz = 100hz refresh rate = hopefully no flicker
-
-		TCCR1B =  _BV( WGM12 ) |	// CTC mode - Clear Timer on Compare Match (CTC) Mode
-		_BV( CS12  );				// 256 prescaler
-
-		TIMSK1 |= _BV( OCIE1A );	// Bit 1 – OCIE1A: Timer/Counter1, Output Compare A Match Interrupt Enable
-	
-	#else
-	
-		// TCCR1A Timer/Counter1 Control Register A, Controls the timer output pins, which we will not use
 		
-		TCNT1  = 0;					// Timer/Counter(TCNT1), start it at zero (seems safe)
-
-		OCR1A = (F_CPU/(REFRESH_RATE*FDA_SIZE));	// Output Compare Registers(OCR1A), interrupt every this many cycle. 50hz refresh rate * 40 pixels = hopefully no flicker
-
-		TCCR1B =  _BV( WGM12 ) | 	// Timer/Counter Control Registers(TCCR1A/B), CTC mode - Clear Timer on Compare Match (CTC) Mode
+	// TCCR1A Timer/Counter1 Control Register A, Controls the timer output pins, which we will not use
 		
-			      _BV( CS10  );		// x1 (no) prescaler - timer runs at clk
+	TCNT1  = 0;					// Timer/Counter(TCNT1), start it at zero (seems safe)
+
+	OCR1A = (F_CPU/(REFRESH_RATE*FDA_SIZE));	// Output Compare Registers(OCR1A), interrupt every this many cycle. 50hz refresh rate * 40 pixels = hopefully no flicker
+
+	TCCR1B =  _BV( WGM12 ) | 	// Timer/Counter Control Registers(TCCR1A/B), CTC mode - Clear Timer on Compare Match (CTC) Mode
 		
-		TIMSK |= _BV( OCIE1A );		// OCIE1A: Timer/Counter1, Output Compare A Match Interrupt Enable
+			    _BV( CS10  );		// x1 (no) prescaler - timer runs at clk
+		
+	TIMSK |= _BV( OCIE1A );		// OCIE1A: Timer/Counter1, Output Compare A Match Interrupt Enable
 			
-	#endif
 
-	
 	sei();             // enable all interrupts
 	
 }
@@ -378,32 +366,19 @@ void initInt()
 
 // Row 0 = Top
 
-#ifdef ARDUNIO
+//ATTINY 4313
 
-	static byte const rowDirectionBits = 0b00001111;      // 0=row goes low, 1=Row goes high
+static byte const rowDirectionBits = 0b01010101;      // 0=row goes low, 1=Row goes high
 
-	static byte const portBRowBits[ROWS]  = {_BV(2),_BV(0),     0,     0,_BV(2),_BV(0),     0,     0 };
-	static byte const portDRowBits[ROWS]  = {     0,     0,_BV(6),_BV(4),     0,     0,_BV(6),_BV(4) };
-
-
-	static byte const portBColBits[COLS] = {     0,     0,     0,_BV(1),_BV(3) };
-   	static byte const portDColBits[COLS] = {_BV(3),_BV(5),_BV(7),     0,     0 };
-
-#else //ATTINY 4313
-
-	static byte const rowDirectionBits = 0b01010101;      // 0=row goes low, 1=Row goes high
-
-	static byte const portBRowBits[ROWS]  = {_BV(0),_BV(0),_BV(2),_BV(2),_BV(4),_BV(4),_BV(6),_BV(6) };
-	static byte const portDRowBits[ROWS]  = {     0,     0,     0,     0,     0,     0,     0,     0 };    
+static byte const portBRowBits[ROWS]  = {_BV(0),_BV(0),_BV(2),_BV(2),_BV(4),_BV(4),_BV(6),_BV(6) };
+static byte const portDRowBits[ROWS]  = {     0,     0,     0,     0,     0,     0,     0,     0 };    
 
 
-	// Note that col is always opposite of row so we don't need colDirectionBits
+// Note that col is always opposite of row so we don't need colDirectionBits
 	
-	static byte const portBColBits[COLS] = {_BV(7),_BV(5),_BV(3), _BV(1),     0};
-	static byte const portDColBits[COLS] = {     0,     0,      0,     0,_BV(6)};
+static byte const portBColBits[COLS] = {_BV(7),_BV(5),_BV(3), _BV(1),     0};
+static byte const portDColBits[COLS] = {     0,     0,      0,     0,_BV(6)};
 		
-#endif
-
 // These keep track of the pixel to display on the next interrupt
 byte int_y = FDA_Y_MAX-1;
 byte int_x = FDA_X_MAX-1;
@@ -415,6 +390,8 @@ static unsigned int refreshCount=0;		// how many times have we refreshed the scr
 #define REFRESH_PER_FRAME ( REFRESH_RATE / FRAME_RATE )		// How many refreshes before we trigger the next frame to be drawn?
 
 static volatile byte nextFrameFlag=0;	// Signal to the main thread that it is time to update the display with the next frame in the animation
+
+static volatile int test_state=0;		// Keep track of current test mode pattern
 
 ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
 {
@@ -453,6 +430,7 @@ ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
 
           ddrbt  = PORTB | portBRowBits[int_y];               // enable output for the col pins to drive high, also enable output for row pins which are zero so will go low
           ddrdt  = PORTD | portDRowBits[int_y];
+		  
       }
 
 
@@ -472,7 +450,7 @@ ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
         // ...and off again
 
       }
- }
+  }
 
   // now get ready for next pass...
   // run backwards because decrement/compare zero is supposed to be slightly faster in AVR
@@ -503,67 +481,96 @@ ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
   #ifdef TIMECHECK
     PORTA &= ~_BV(0);
   #endif
-
              
 }
 
 
 byte const *candle_bitstream_ptr;     // next byte to read from the bitstream in program memory
 
-static byte workingByte=0;   // current working byte
-static byte bitsLeft=0;      // how many bits left in the current working byte?
+static byte workingByte;   // current working byte
+static byte bitsLeft;      // how many bits left in the current working byte?
+static byte retVal;
 
-int getNextBit() {
+static byte getNextBit() {
 
   if (bitsLeft==0) {
     workingByte=pgm_read_byte_near(candle_bitstream_ptr++);
     bitsLeft=8;
   }
 
-  byte retVal = workingByte & 0x01;    // Extract the bottom bit
+  retVal = workingByte & 0x01;    // Extract the bottom bit
 
   workingByte >>= 1;                   // shift working byte down a notch
   bitsLeft--;
-
-
+  
   return( retVal );
 }
 
+
 void playVideo() {
 
-  byte *fdaptr = fda;
-
-  for(int i=FDA_SIZE; i>0; i-- ) {      // always start a video with a blank frame buffer. zeros in the 1st frame will come in as "no change" bits
-
-    *(fdaptr++)=0x00;
-
-  }
-
+  framecounttype frame= FRAMECOUNT;			
+  
   candle_bitstream_ptr = candle_bitstream;          // Start at the beginning of the video data
-
-  for( int frame=0; frame< FRAMES; frame++ ) {
+  workingByte=0;
+  bitsLeft=0;
+  
+  // Always start with an all 0x00 initial frame because that it was the encoder assumes
+  memset( fda , 0x00 , FDA_SIZE );
+  
+  while ( --frame ) {
 	
 	#ifdef TIMECHECK
 		PORTA |= _BV(1);
 	#endif
-	 
-    fdaptr = fda + FDA_SIZE-1;
+	 	 
+	// Check if we are in diagnostic test mode....
+	
+	// Assume that all port d bits are input mode at the moment
+	
+	
+	/*
+	DDRD |= _BV(5);			// Set test pin to input
+	PORTD |= _BV(5);		// Enable Pull-up
+	*/
+	
+	// TODO: store a keyframe in the first frame save space over assuming a full 0 reset on each loop?
+	// TODO : Try compressing 1 bit for zero pixels                
+			
+	//if (frame==0) memset( fdaptr , 0x00 , FDA_SIZE); 
+	 	 
+	byte fdaIndex = FDA_SIZE;
+		
+	do {
+			
+		fdaIndex--;
 
-    do {
+		// start decoding the bits for this frame...
 
-        // start decodeing the bits for this frame...
+		// TODO: Doing this bit unrolling in ASM using carry bit and a rolling AND Register would be MUCH chorter and faster...
+			
+		if ( getNextBit() ) {      // Current pixel changed?
+			
+	/*		 byte brightness =  (getNextBit() << 4) | (getNextBit() << 3) | ( getNextBit() << 2  ) | ( getNextBit() << 1 ) | ( getNextBit() );
+	*/												
+			// Breaking it out like this saves 74 bytes!
+	
+			byte brightness = getNextBit();
+			brightness<<=1;
+			brightness|=getNextBit();
+			brightness<<=1;
+			brightness|=getNextBit();
+			brightness<<=1;
+			brightness|=getNextBit(); 
+			brightness<<=1;
+			brightness|=getNextBit();					
+			
+	
+			fda[fdaIndex] = getDutyCycle(brightness);
 
-        if ( getNextBit() & 0x01 ) {      // Current pixel changed?
+		}
 
-            byte brightness =  (getNextBit() << 4) | (getNextBit() << 3) | ( getNextBit() << 2  ) | ( getNextBit() << 1 ) | ( getNextBit() );
-
-            byte dutyCycle =  pgm_read_byte_near( dutyCycle32 + brightness ); // Lookup the duty cycle for this brightness in our local table
-
-            *fdaptr = dutyCycle ;
-
-        }
-
-    } while ( fdaptr-- > fda );
+	} while ( fdaIndex > 0 );
 	
 	#ifdef TIMECHECK
 		PORTA  &= ~ _BV(1);
@@ -574,7 +581,6 @@ void playVideo() {
 	// wait for a good time to refresh screen...
 	while (!nextFrameFlag);
 	nextFrameFlag = 0;
-
 	
   }
 
@@ -590,8 +596,37 @@ void setup() {
   
   fdaInit();
   initInt();
+ 
+  
 }
 
+
+
+void testpattern() {
+
+	signed char brightness = 31;
+	
+	while (brightness>=0) {
+	
+		int x,y;
+	
+		for( y=0; y<FDA_Y_MAX;y++) {
+		
+			for(x=0; x<FDA_X_MAX;x++) {
+			
+				fda[y*FDA_X_MAX+x] = getDutyCycle(brightness);
+				
+				while (!nextFrameFlag);
+				nextFrameFlag = 0;
+				
+			}
+		}		
+		
+		brightness -= 30;
+		
+	}
+				
+}
 
 void loop()
 {
@@ -599,6 +634,8 @@ void loop()
 	playVideo();
 	
 }
+
+
 
 
 int main(void)
@@ -625,8 +662,13 @@ int main(void)
 	}
 	
 	*/
+
+		testpattern();
+	
+
 	    while(1)
     {
+
         loop();
     }
 }

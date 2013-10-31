@@ -285,6 +285,8 @@ PROGMEM byte const candle_bitstream[]  = {
 
 // TODO: THis has one extra value at the end? 
 
+// TODO: This would be nice to keep in EEPROM to save bytes, but too slow to access in INT routine?
+
 PROGMEM byte const dutyCycle32[32] = {
 	0,     1 ,     2,     3,     4,     5,     7,     9,    12,
 	15,    18,    22,    27,    32,    38,    44,    51,    58,

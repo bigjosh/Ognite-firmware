@@ -11,6 +11,7 @@
 	09/26/13 - First GitHub commit
 	10/16/13 - Added test mode on that will show a test pattern on power-up.
 	10/31/13 - Starting to whittle. Program Memory Usage 	:	3254 bytes   
+	10/31/13 - Changed everything except ISR to static inline. Program Memory Usage 	:	3240 bytes
 	
 	      
 */
@@ -495,7 +496,7 @@ static byte workingByte;   // current working byte
 static byte bitsLeft;      // how many bits left in the current working byte?
 static byte retVal;
 
-static byte getNextBit() {
+static inline byte getNextBit() {
 
   if (bitsLeft==0) {
     workingByte=pgm_read_byte_near(candle_bitstream_ptr++);
@@ -511,7 +512,7 @@ static byte getNextBit() {
 }
 
 
-void playVideo() {
+static inline void playVideo() {
 
   framecounttype frame= FRAMECOUNT;			
   
@@ -590,7 +591,7 @@ void playVideo() {
 
 }
 
-void setup() {
+static inline void setup() {
 
   // On boot, clock prescaler will be 8. Lets set it to 1 to get full speed
   // Note that no interrupts should be on yet so we'll be sure to hit the second step in time (you only get 4 cycles).
@@ -606,7 +607,7 @@ void setup() {
 
 
 
-void testpattern() {
+static inline void testpattern() {
 
 	signed char brightness = 31;
 	
@@ -632,7 +633,7 @@ void testpattern() {
 				
 }
 
-void loop()
+static inline void loop()
 {
 	
 	playVideo();

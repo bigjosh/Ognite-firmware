@@ -285,18 +285,19 @@ PROGMEM byte const candle_bitstream[]  = {
 
 // Convert 5 bit brightness into 8 bit LED duty cycle
 
-// TODO: THis has one extra value at the end? 
+// Note that we could keep this in program memory but we have plenty of static RAM right now 
+// and this way makes slightly smaller code
 
-// TODO: This would be nice to keep in EEPROM to save bytes, but too slow to access in INT routine?
+#define DUTY_CYCLE_SIZE 32
 
-PROGMEM byte const dutyCycle32[32] = {
+const byte dutyCycle32[DUTY_CYCLE_SIZE] = {
 	0,     1 ,     2,     3,     4,     5,     7,     9,    12,
 	15,    18,    22,    27,    32,    38,    44,    51,    58,
 	67,    76,    86,    96,   108,   120,   134,   148,   163,
 	180,   197,   216,   235,   255,
 };
 
-#define getDutyCycle(b) (pgm_read_byte_near(dutyCycle32+b))
+#define getDutyCycle(b) (dutyCycle32[b])
 
 #define FDA_X_MAX 5
 #define FDA_Y_MAX 8
@@ -315,7 +316,7 @@ byte fda[FDA_SIZE];
 
 // Set up the pins - call on startup
 
-void fdaInit() {
+static inline void fdaInit() {
 
 	// set all rows and cols to Hi-Z so nothing shows up on the screen
 
@@ -332,7 +333,7 @@ void fdaInit() {
 								// PA0 goes high while we are in the screen refreshing/PWM interrupt routine
 								// PA1 goes high while we are decoding the next frame to be displayed
 
-void initInt()
+static inline void initInt()
 {
 	
 	#ifdef TIMECHECK
@@ -465,8 +466,8 @@ ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
     int_x = FDA_X_MAX-1;                // retrace to right col
 
     if ( int_y-- == 0 ) { // on top row?
-
-      int_y = FDA_Y_MAX-1;
+  
+	  int_y = FDA_Y_MAX-1;
 	  
 	  refreshCount++;
 	  
@@ -489,12 +490,10 @@ ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
              
 }
 
-
 byte const *candle_bitstream_ptr;     // next byte to read from the bitstream in program memory
 
 static byte workingByte;   // current working byte
 static byte bitsLeft;      // how many bits left in the current working byte?
-static byte retVal;
 
 static inline byte getNextBit() {
 
@@ -503,7 +502,7 @@ static inline byte getNextBit() {
     bitsLeft=8;
   }
 
-  retVal = workingByte & 0x01;    // Extract the bottom bit
+  byte retVal = workingByte & 0x01;    // Extract the bottom bit
 
   workingByte >>= 1;                   // shift working byte down a notch
   bitsLeft--;
@@ -532,8 +531,7 @@ static inline void playVideo() {
 	// Check if we are in diagnostic test mode....
 	
 	// Assume that all port d bits are input mode at the moment
-	
-	
+		
 	/*
 	DDRD |= _BV(5);			// Set test pin to input
 	PORTD |= _BV(5);		// Enable Pull-up
@@ -601,36 +599,26 @@ static inline void setup() {
   
   fdaInit();
   initInt();
- 
-  
+   
 }
 
 
+static void scanscreen( byte duty_cycle ) {
+
+	for( int x=0;  x < FDA_SIZE ; x++ ) {			// Scan the screen bottom-left to top-right
+		
+		fda[x]=duty_cycle;
+		while (!nextFrameFlag);
+		nextFrameFlag = 0;		
+	}
+		
+}
 
 static inline void testpattern() {
+	
+	scanscreen( getDutyCycle( DUTY_CYCLE_SIZE-1 ) );		// First turn on all the LEDs
+	scanscreen( getDutyCycle( 0 ) );						// Then turn them off
 
-	signed char brightness = 31;
-	
-	while (brightness>=0) {
-	
-		int x,y;
-	
-		for( y=0; y<FDA_Y_MAX;y++) {
-		
-			for(x=0; x<FDA_X_MAX;x++) {
-			
-				fda[y*FDA_X_MAX+x] = getDutyCycle(brightness);
-				
-				while (!nextFrameFlag);
-				nextFrameFlag = 0;
-				
-			}
-		}		
-		
-		brightness -= 30;
-		
-	}
-				
 }
 
 static inline void loop()

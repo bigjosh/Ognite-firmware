@@ -10,6 +10,7 @@
 	09/22/13 - Reversed the rowDirectionBits to fix the mess caused by the previous change. Argh.  
 	09/26/13 - First GitHub commit
 	10/16/13 - Added test mode on that will show a test pattern on power-up.
+	10/31/13 - Starting to whittle. Program Memory Usage 	:	3254 bytes   
 	
 	      
 */

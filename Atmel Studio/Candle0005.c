@@ -600,6 +600,10 @@ static inline void playVideo() {
 }
 
 static inline void setup() {
+	
+	
+	
+  ACSR |= ACD;		// Turn off analog compare unit. We don't use it, so save power. Saves about 0.1ma   3.6mA drops to  3.5 mA
 
   // On boot, clock prescaler will be 8. Lets set it to 1 to get full speed
   // Note that no interrupts should be on yet so we'll be sure to hit the second step in time (you only get 4 cycles).

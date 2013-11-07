@@ -288,16 +288,18 @@ PROGMEM byte const candle_bitstream[]  = {
 // Note that we could keep this in program memory but we have plenty of static RAM right now 
 // and this way makes slightly smaller code
 
-#define DUTY_CYCLE_SIZE 32
+#define BRIGHTNESSBITS 5
 
-const byte dutyCycle32[DUTY_CYCLE_SIZE] = {
+#define DUTY_CYCLE_SIZE (1<<BRIGHTNESSBITS)
+
+const byte brightness2Dutycycle[DUTY_CYCLE_SIZE] = {
 	0,     1 ,     2,     3,     4,     5,     7,     9,    12,
 	15,    18,    22,    27,    32,    38,    44,    51,    58,
 	67,    76,    86,    96,   108,   120,   134,   148,   163,
 	180,   197,   216,   235,   255,
 };
 
-#define getDutyCycle(b) (dutyCycle32[b])
+#define getDutyCycle(b) (brightness2Dutycycle[b])
 
 #define FDA_X_MAX 5
 #define FDA_Y_MAX 8
@@ -508,94 +510,155 @@ static inline byte getNextBit() {
 
 */
 
-// ger rid of semaphores so it runs in the simulator
+// get rid of semaphores so it runs in the simulator
 
-//#define SIMULATOR 
+// #define SIMULATOR 
 
 // copy the next frame from program memory (candel_bitstream[]) to the RAM frame buffer (fda[])
 // assumes that the compiler will set the fda[] to all zeros on startup....
 
 void displayNextFrame() {
 	
-	  static byte const *candle_bitstream_ptr;     // next byte to read from the bitstream in program memory
+	  static byte const *candleBitstremPtrStatic;     // next byte to read from the bitstream in program memory
 
-	  static byte workingByte;			  // current working byte
+	  static byte workingByteStatic;			  // current working byte
 	  
-	  static byte workingBitsLeft;      // how many bits left in the current working byte? 0 triggers loading next byte
+	  static byte workingBitsLeftStatic;      // how many bits left in the current working byte? 0 triggers loading next byte
 	  
 	  static framecounttype frameCount = FRAMECOUNT;		// what frame are we on?
 
       #ifdef TIMECHECK
 		PORTA |= _BV(1);
 	  #endif
+
+
+	  byte workingByte = workingByteStatic;
+	  
+	  byte workingBitsLeft	 = workingBitsLeftStatic;
+	  
+	  byte const *candleBitstremPtr = candleBitstremPtrStatic;
 	  	  
 	  if ( frameCount==FRAMECOUNT ) {							// Is this the last frame? 
 		  
 			memset( fda , 0x00 , FDA_SIZE );			// zero out the display buffer, becuase that is how the encoder currently works
-			candle_bitstream_ptr=candle_bitstream;		// next byte to read from the bitstream in program memory
+			candleBitstremPtr=candle_bitstream;		// next byte to read from the bitstream in program memory
 			workingBitsLeft=0;							// how many bits left in the current working byte? 0 triggers loading next byte
 			frameCount= 0;
 			
-	  } else {		  
-		  
-		  frameCount++;
-		  
-	  }
+	  } 
+	    
+	  frameCount++;
 	  
 	  byte fdaIndex = FDA_SIZE;		// Which byte of the FDA are we filling in? Start at end because compare to zero slightly more efficient and and that is how data is encoded
-	  			 	  
-	  do {			// step though each pixel int the fda
+	  
+	  byte brightnessBitsLeft=0;	// Currently building a brightness value? How many bits left to read in?
+	  	  
+	  byte workingBrightness;		// currently building brightness value
+	  			 	  						 						 
+	  do {			// step though each pixel in the fda
 		  
-			fdaIndex--;
 		  
-			if (workingBitsLeft==0) {						
+			if (workingBitsLeft==0) {										// normalize to next byte if we are out of bits
 					
-				workingByte=pgm_read_byte_near(candle_bitstream_ptr++);
-				workingBitsLeft=7;
+				workingByte=pgm_read_byte_near(candleBitstremPtr++);
+				workingBitsLeft=8;
 					
-			} else {						
-				
-				workingByte >>=1;
-				workingBitsLeft--;								
-				
 			} 
-			
-											
-			if ( (workingByte & (byte) 0x01) != (byte) 0x00 ) {		// 1 bit indicates that this pixel has changed and next 5 bits are brightness
 
-		  		byte brightness=0;
-				  
-				byte brightnessBitsLeft = 5; 
+			if (brightnessBitsLeft>0) { //are we currently reading brightness? Consume as many bits as we can (if too few) or as we need (if too manY) from workingbyte into brightness
+
+				if (workingBitsLeft>=brightnessBitsLeft) {						// We have enough bits to complete building the brightness value...
 					
-				do {						
+					workingBitsLeft-=brightnessBitsLeft;
 					
-					if (workingBitsLeft==0) {
+					//This ASM doesn't work and I don't know why. It should be twice as fast....
+
+					while (brightnessBitsLeft) {
+					
+					
+						asm(
+							"ror %0"	"\n\t"
+							"rol %1"	"\n\t"
+						
+							: "=r" (workingByte) , "=r" (workingBrightness) 
+							:  "0"  (workingByte) ,"1"  (workingBrightness) 
+						
+						
+							);
 							
-						workingByte=pgm_read_byte_near(candle_bitstream_ptr++);
-						workingBitsLeft=7;
 							
-					} else {
-							
-						workingByte >>=1;
+						brightnessBitsLeft--;
+					
+					}
+					
+/*
+					
+					while (brightnessBitsLeft) {
+						
+						workingBrightness<<=1;
+						workingBrightness|=(workingByte&0x01);
+						workingByte>>=1;
+						
+						brightnessBitsLeft--;
+					}
+*/					
+					// brightnessBitsLeft now 0
+				
+																													
+					fda[--fdaIndex] = getDutyCycle(workingBrightness);	
+					
+		
+				} else {  // brightnessBitsLeft > workingBitsLeft , not enough bits, so just consume bits one at a time ontile we get a full new byte
+										
+					brightnessBitsLeft -= workingBitsLeft;
+					
+					while (workingBitsLeft) {
+						
+						asm(
+							"ror %0"	"\n\t"
+							"rol %1"	"\n\t"
+						
+							: "=r" (workingByte) , "=r" (workingBrightness)
+							:  "0"  (workingByte) ,"1"  (workingBrightness)
+						
+						
+						);
+						
 						workingBitsLeft--;
-												
-					}			  
-					
-
-			  
-					brightness <<= 1;
-					brightness |= (workingByte & 0x01);		// ASM rotate so much better here...
 						
-					brightnessBitsLeft--;
-						
-				} while (brightnessBitsLeft>0);
-			  
-			  	  	  
-				fda[fdaIndex] = getDutyCycle(brightness);		  
+					}
 					
+					// workingbitsleft==0 here, so we will reload the working byte on the next pass and finish
+																		
+				}
+				
+				
+			} else {
+				
+				if ( (workingByte & 0x01) ==  0x00 ) {		// 0 bit indicates that this pixel has not changed 
+					
+					--fdaIndex;								// So skip it					
+					
+				} else { 
+										
+					brightnessBitsLeft = BRIGHTNESSBITS;					// Now we will read in the brightness value on next loops though
+					workingBrightness = 0;
+					
+				} 
+				
+				workingBitsLeft--;
+				workingByte >>=1 ;	
+				
 			}
+			
 						  
 	  } while ( fdaIndex > 0 ); 
+	  
+	  
+	  workingByteStatic = workingByte;
+	  workingBitsLeftStatic = workingBitsLeft;
+	  
+	  candleBitstremPtrStatic = candleBitstremPtr;
 	  
 	  #ifdef TIMECHECK
 		PORTA  &= ~ _BV(1);

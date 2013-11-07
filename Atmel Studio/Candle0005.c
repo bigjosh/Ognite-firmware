@@ -519,24 +519,17 @@ static inline byte getNextBit() {
 
 void displayNextFrame() {
 	
-	  static byte const *candleBitstremPtrStatic;     // next byte to read from the bitstream in program memory
+	  static byte const *candleBitstremPtr;     // next byte to read from the bitstream in program memory
 
-	  static byte workingByteStatic;			  // current working byte
+	  static byte workingByte;			  // current working byte
 	  
-	  static byte workingBitsLeftStatic;      // how many bits left in the current working byte? 0 triggers loading next byte
+	  static byte workingBitsLeft;      // how many bits left in the current working byte? 0 triggers loading next byte
 	  
 	  static framecounttype frameCount = FRAMECOUNT;		// what frame are we on?
 
       #ifdef TIMECHECK
 		PORTA |= _BV(1);
 	  #endif
-
-
-	  byte workingByte = workingByteStatic;
-	  
-	  byte workingBitsLeft	 = workingBitsLeftStatic;
-	  
-	  byte const *candleBitstremPtr = candleBitstremPtrStatic;
 	  	  
 	  if ( frameCount==FRAMECOUNT ) {							// Is this the last frame? 
 		  
@@ -566,72 +559,18 @@ void displayNextFrame() {
 			} 
 
 			if (brightnessBitsLeft>0) { //are we currently reading brightness? Consume as many bits as we can (if too few) or as we need (if too manY) from workingbyte into brightness
-
-				if (workingBitsLeft>=brightnessBitsLeft) {						// We have enough bits to complete building the brightness value...
-					
-					workingBitsLeft-=brightnessBitsLeft;
-					
-					//This ASM doesn't work and I don't know why. It should be twice as fast....
-
-					while (brightnessBitsLeft) {
-					
-					
-						asm(
-							"ror %0"	"\n\t"
-							"rol %1"	"\n\t"
-						
-							: "=r" (workingByte) , "=r" (workingBrightness) 
-							:  "0"  (workingByte) ,"1"  (workingBrightness) 
-						
-						
-							);
-							
-							
-						brightnessBitsLeft--;
-					
-					}
-					
-/*
-					
-					while (brightnessBitsLeft) {
-						
-						workingBrightness<<=1;
-						workingBrightness|=(workingByte&0x01);
-						workingByte>>=1;
-						
-						brightnessBitsLeft--;
-					}
-*/					
-					// brightnessBitsLeft now 0
 				
+				workingBrightness <<=1;
+				workingBrightness |= (workingByte & 0x01);
+				
+				brightnessBitsLeft--;
+				
+				if (brightnessBitsLeft==0) {
+
 																													
 					fda[--fdaIndex] = getDutyCycle(workingBrightness);	
 					
-		
-				} else {  // brightnessBitsLeft > workingBitsLeft , not enough bits, so just consume bits one at a time ontile we get a full new byte
-										
-					brightnessBitsLeft -= workingBitsLeft;
-					
-					while (workingBitsLeft) {
-						
-						asm(
-							"ror %0"	"\n\t"
-							"rol %1"	"\n\t"
-						
-							: "=r" (workingByte) , "=r" (workingBrightness)
-							:  "0"  (workingByte) ,"1"  (workingBrightness)
-						
-						
-						);
-						
-						workingBitsLeft--;
-						
-					}
-					
-					// workingbitsleft==0 here, so we will reload the working byte on the next pass and finish
-																		
 				}
-				
 				
 			} else {
 				
@@ -646,20 +585,14 @@ void displayNextFrame() {
 					
 				} 
 				
-				workingBitsLeft--;
-				workingByte >>=1 ;	
-				
 			}
 			
+			workingByte >>=1;
+			workingBitsLeft--;
 						  
 	  } while ( fdaIndex > 0 ); 
 	  
-	  
-	  workingByteStatic = workingByte;
-	  workingBitsLeftStatic = workingBitsLeft;
-	  
-	  candleBitstremPtrStatic = candleBitstremPtr;
-	  
+	  	  
 	  #ifdef TIMECHECK
 		PORTA  &= ~ _BV(1);
 	  #endif 	  	

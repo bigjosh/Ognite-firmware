@@ -12,8 +12,8 @@
 	10/16/13 - Added test mode on that will show a test pattern on power-up.
 	10/31/13 - Starting to whittle. Program Memory Usage 	:	3254 bytes   
 	10/31/13 - Changed everything except ISR to static inline. Program Memory Usage 	:	3240 bytes
-	
-	      
+	11/07/13 - video now plays a frame at a time aysynchonously and things generally cleaned up
+
 */
 
 #define F_CPU 8000000UL  // We will be at 8 MHz once we get all booted up and get rid of the prescaller
@@ -335,6 +335,8 @@ static inline void fdaInit() {
 								// PA0 (pin 5) goes high while we are in the screen refreshing/PWM interrupt routine
 								// PA1 (pin 4) goes high while we are decoding the next frame to be displayed
 
+// Set up interrupts 
+
 static inline void initInt()
 {
 	
@@ -356,7 +358,7 @@ static inline void initInt()
 		
 	TCNT1  = 0;					// Timer/Counter(TCNT1), start it at zero (seems safe)
 
-	OCR1A = (F_CPU/(REFRESH_RATE*FDA_SIZE));	// Output Compare Registers(OCR1A), interrupt every this many cycle. 50hz refresh rate * 40 pixels = hopefully no flicker
+	OCR1A = (F_CPU/(REFRESH_RATE*FDA_SIZE));	// Output Compare Registers(OCR1A), interrupt every this many cycles. 50hz screen refresh rate * 40 pixels = 2Khz = hopefully no flicker
 
 	TCCR1B =  _BV( WGM12 ) | 	// Timer/Counter Control Registers(TCCR1A/B), CTC mode - Clear Timer on Compare Match (CTC) Mode
 		
@@ -367,14 +369,13 @@ static inline void initInt()
 
 	sei();             // enable all interrupts
 	
+	// Ok, now we should be automatically calling ISR(TIMER1) at 2Khz!
+	
 }
 
 #define ROWS FDA_Y_MAX
 #define COLS FDA_X_MAX
 
-// Row 0 = Top
-
-//ATTINY 4313
 
 static byte const rowDirectionBits = 0b01010101;      // 0=row goes low, 1=Row goes high
 
@@ -399,7 +400,7 @@ static unsigned int refreshCount=0;		// how many times have we refreshed the scr
 
 static volatile byte nextFrameFlag=0;	// Signal to the main thread that it is time to update the display with the next frame in the animation
 
-static volatile int test_state=0;		// Keep track of current test mode pattern
+//static volatile int test_state=0;		// Keep track of current test mode pattern
 
 ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
 {
@@ -461,7 +462,7 @@ ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
   }
 
   // now get ready for next pass...
-  // run backwards because decrement/compare zero is supposed to be slightly faster in AVR
+  // run backwards because decrement/compare zero is supposed to be slightly faster in AVR C
 
   if ( int_x-- == 0  ) {  // On left col
 
@@ -492,23 +493,6 @@ ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
              
 }
 
-/*
-static inline byte getNextBit() {
-
-  if (bitsLeft==0) {
-    workingByte=pgm_read_byte_near(candle_bitstream_ptr++);
-    bitsLeft=8;
-  }
-
-  byte retVal = workingByte & 0x01;    // Extract the bottom bit
-
-  workingByte >>= 1;                   // shift working byte down a notch
-  bitsLeft--;
-  
-  return( retVal );
-}
-
-*/
 
 // get rid of semaphores so it runs in the simulator
 
@@ -600,7 +584,6 @@ void displayNextFrame() {
 
 static inline void playVideo() {
 	
-  
 	while (1) {
 		
 		

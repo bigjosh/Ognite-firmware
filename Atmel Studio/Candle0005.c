@@ -474,9 +474,89 @@ ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
 	refreshCount++;
 	  			  
 	if (refreshCount >= REFRESH_PER_FRAME ) {
+		
+	  refreshCount=0;
 		  			  
-		nextFrameFlag = 1;
-		refreshCount=0;
+	  // Time to display the next frame in the animation...	
+	  // copy the next frame from program memory (candel_bitstream[]) to the RAM frame buffer (fda[])	 						
+						
+	  static byte const *candleBitstremPtr;     // next byte to read from the bitstream in program memory
+
+	  static byte workingByte;			  // current working byte
+	  
+	  static byte workingBitsLeft;      // how many bits left in the current working byte? 0 triggers loading next byte
+	  
+	  static framecounttype frameCount = FRAMECOUNT;		// what frame are we on?
+
+	  #ifdef TIMECHECK
+		PORTA |= _BV(1);
+	  #endif
+	  
+	  if ( frameCount==FRAMECOUNT ) {							// Is this the last frame?
+		  
+		  memset( fda , 0x00 , FDA_SIZE );			// zero out the display buffer, becuase that is how the encoder currently works
+		  candleBitstremPtr=candle_bitstream;		// next byte to read from the bitstream in program memory
+		  workingBitsLeft=0;							// how many bits left in the current working byte? 0 triggers loading next byte
+		  frameCount= 0;
+		  
+	  }
+	  
+	  frameCount++;
+	  
+	  byte fdaIndex = FDA_SIZE;		// Which byte of the FDA are we filling in? Start at end because compare to zero slightly more efficient and and that is how data is encoded
+	  
+	  byte brightnessBitsLeft=0;	// Currently building a brightness value? How many bits left to read in?
+	  
+	  byte workingBrightness;		// currently building brightness value
+	  
+	  do {			// step though each pixel in the fda
+		  
+		  
+		  if (workingBitsLeft==0) {										// normalize to next byte if we are out of bits
+			  
+			  workingByte=pgm_read_byte_near(candleBitstremPtr++);
+			  workingBitsLeft=8;
+			  
+		  }
+
+		  if (brightnessBitsLeft>0) { //are we currently reading brightness? Consume as many bits as we can (if too few) or as we need (if too manY) from workingbyte into brightness
+			  
+			  workingBrightness <<=1;
+			  workingBrightness |= (workingByte & 0x01);
+			  
+			  brightnessBitsLeft--;
+			  
+			  if (brightnessBitsLeft==0) {
+
+				  
+				  fda[--fdaIndex] = getDutyCycle(workingBrightness);
+				  
+			  }
+			  
+			  } else {
+			  
+			  if ( (workingByte & 0x01) ==  0x00 ) {		// 0 bit indicates that this pixel has not changed
+				  
+				  --fdaIndex;								// So skip it
+				  
+				  } else {
+				  
+				  brightnessBitsLeft = BRIGHTNESSBITS;					// Now we will read in the brightness value on next loops though
+				  workingBrightness = 0;
+				  
+			  }
+			  
+		  }
+		  
+		  workingByte >>=1;
+		  workingBitsLeft--;
+		  
+	  } while ( fdaIndex > 0 );
+	  
+	  
+	  #ifdef TIMECHECK
+	  PORTA  &= ~ _BV(1);
+	  #endif
 	}
 
 
@@ -486,111 +566,6 @@ ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
              
 }
 
-
-// get rid of semaphores so it runs in the simulator
-
-// #define SIMULATOR 
-
-// copy the next frame from program memory (candel_bitstream[]) to the RAM frame buffer (fda[])
-// assumes that the compiler will set the fda[] to all zeros on startup....
-
-void displayNextFrame() {
-	
-	  static byte const *candleBitstremPtr;     // next byte to read from the bitstream in program memory
-
-	  static byte workingByte;			  // current working byte
-	  
-	  static byte workingBitsLeft;      // how many bits left in the current working byte? 0 triggers loading next byte
-	  
-	  static framecounttype frameCount = FRAMECOUNT;		// what frame are we on?
-
-      #ifdef TIMECHECK
-		PORTA |= _BV(1);
-	  #endif
-	  	  
-	  if ( frameCount==FRAMECOUNT ) {							// Is this the last frame? 
-		  			
-			memset( fda , 0x00 , FDA_SIZE );			// zero out the display buffer, becuase that is how the encoder currently works
-			candleBitstremPtr=candle_bitstream;		// next byte to read from the bitstream in program memory
-			workingBitsLeft=0;							// how many bits left in the current working byte? 0 triggers loading next byte
-			frameCount= 0;
-			
-	  } 
-	    
-	  frameCount++;
-	  
-	  byte fdaIndex = FDA_SIZE;		// Which byte of the FDA are we filling in? Start at end because compare to zero slightly more efficient and and that is how data is encoded
-	  
-	  byte brightnessBitsLeft=0;	// Currently building a brightness value? How many bits left to read in?
-	  	  
-	  byte workingBrightness;		// currently building brightness value
-	  			 	  						 						 
-	  do {			// step though each pixel in the fda
-		  
-		  
-			if (workingBitsLeft==0) {										// normalize to next byte if we are out of bits
-					
-				workingByte=pgm_read_byte_near(candleBitstremPtr++);
-				workingBitsLeft=8;
-					
-			} 
-
-			if (brightnessBitsLeft>0) { //are we currently reading brightness? Consume as many bits as we can (if too few) or as we need (if too manY) from workingbyte into brightness
-				
-				workingBrightness <<=1;
-				workingBrightness |= (workingByte & 0x01);
-				
-				brightnessBitsLeft--;
-				
-				if (brightnessBitsLeft==0) {
-
-																													
-					fda[--fdaIndex] = getDutyCycle(workingBrightness);	
-					
-				}
-				
-			} else {
-				
-				if ( (workingByte & 0x01) ==  0x00 ) {		// 0 bit indicates that this pixel has not changed 
-					
-					--fdaIndex;								// So skip it					
-					
-				} else { 
-										
-					brightnessBitsLeft = BRIGHTNESSBITS;					// Now we will read in the brightness value on next loops though
-					workingBrightness = 0;
-					
-				} 
-				
-			}
-			
-			workingByte >>=1;
-			workingBitsLeft--;
-						  
-	  } while ( fdaIndex > 0 ); 
-	  
-	  	  
-	  #ifdef TIMECHECK
-		PORTA  &= ~ _BV(1);
-	  #endif 	  	
-}
-
-static inline void playVideo() {
-	
-	while (1) {
-		
-		
-		displayNextFrame();
-		
-		#ifndef SIMULATOR
-			while (!nextFrameFlag);
-		#endif
-					
-		nextFrameFlag = 0;
-	
-	  }
-
-}
 
 static inline void setup() {
 	
@@ -636,12 +611,6 @@ static inline void testpattern() {
 
 }
 
-static inline void loop()
-{
-	
-	playVideo();
-	
-}
 
 
 
@@ -653,10 +622,4 @@ int main(void)
 
 	testpattern();
 	
-
-    while(1)
-    {
-
-        loop();
-    }
 }

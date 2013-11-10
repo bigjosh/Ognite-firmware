@@ -293,6 +293,8 @@ PROGMEM byte const candle_bitstream[]  = {
 
 #define DUTY_CYCLE_SIZE (1<<BRIGHTNESSBITS)
 
+#define FULL_ON_DUTYCYCLE 255	// how much is a full on LED?
+
 const byte brightness2Dutycycle[DUTY_CYCLE_SIZE] = {
 	0,     1 ,     2,     3,     4,     5,     7,     9,    12,
 	15,    18,    22,    27,    32,    38,    44,    51,    58,
@@ -319,16 +321,6 @@ byte fda[FDA_SIZE];
 
 // Set up the pins - call on startup
 
-static inline void fdaInit() {
-
-	// set all rows and cols to Hi-Z so nothing shows up on the screen
-
-	DDRB = 0;
-	PORTB= 0;        
-
-	DDRD = 0;
-	PORTD =0;
-}
 
 #define REFRESH_RATE 62			// Display Refresh rate in Hz (picked to match the fastest we can get WDT wakeups
 
@@ -346,15 +338,6 @@ static inline void fdaInit() {
 static inline void initInt()
 {
 	
-	#ifdef TIMECHECK
-		// Use porta just for debuging on osciliscope
-	
-		PORTA=0x00;
-		DDRA = 0xff; //_BV(0);
-		
-	#endif
-
-
 	// initialize timer1
 
 	cli();           // disable all interrupts
@@ -396,16 +379,17 @@ static byte const portDColBits[COLS] = {     0,     0,      0,     0,_BV(6)};
 		
 #define NOP __asm__("nop\n\t")
 
-static unsigned int refreshCount=0;		// how many times have we refreshed the screen so far?
-
 #define REFRESH_PER_FRAME ( REFRESH_RATE / FRAME_RATE )		// How many refreshes before we trigger the next frame to be drawn?
 
-static volatile byte nextFrameFlag=0;	// Signal to the main thread that it is time to update the display with the next frame in the animation
+byte diagPos=0;		// current screen pixel when scanning in diagnostic modes 0=starting to turn on, FDA_SIZE=starting to turn off, FDA_SIZE*2=done with diagnostics
+
+byte refreshCount=0;
 
 // Do a single full screen refresh
 
 ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
 {
+	
 	
   #ifdef TIMECHECK          
     PORTA |=_BV(0);      // twiddle A0 bit for oscilloscope timing
@@ -473,10 +457,110 @@ ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
 	  
 	refreshCount++;
 	  			  
-	if (refreshCount >= REFRESH_PER_FRAME ) {
+	if (refreshCount >= REFRESH_PER_FRAME ) {			// step to next frame in the animation sequence?
+		
+	  refreshCount=0;
+	  
+	  // TODO: this diagnostic screen generator costs 42 bytes. Can we make it smaller or just get rid of it?
+	  
+	  if (diagPos<(FDA_SIZE*2)) {		// We are currently generating the startup diagnostics screens
+		  
+		  if (diagPos<FDA_SIZE) {
+			  
+			  fda[diagPos++] = FULL_ON_DUTYCYCLE;
+			  
+		  } else {
+		  
+			  fda[(diagPos++)-FDA_SIZE] = 0;
+			  
+		  }
+		  
+	  } else {  // normal video playback....
 		  			  
-		nextFrameFlag = 1;
-		refreshCount=0;
+			// Time to display the next frame in the animation...	
+			// copy the next frame from program memory (candel_bitstream[]) to the RAM frame buffer (fda[])	 						
+						
+			static byte const *candleBitstremPtr;     // next byte to read from the bitstream in program memory
+
+			static byte workingByte;			  // current working byte
+	  
+			static byte workingBitsLeft;      // how many bits left in the current working byte? 0 triggers loading next byte
+	  
+			static framecounttype frameCount = FRAMECOUNT;		// what frame are we on?
+
+			#ifdef TIMECHECK
+			PORTA |= _BV(1);
+			#endif
+	  
+			if ( frameCount==FRAMECOUNT ) {							// Is this the last frame?
+		  
+				memset( fda , 0x00 , FDA_SIZE );			// zero out the display buffer, becuase that is how the encoder currently works
+				candleBitstremPtr=candle_bitstream;		// next byte to read from the bitstream in program memory
+				workingBitsLeft=0;							// how many bits left in the current working byte? 0 triggers loading next byte
+				frameCount= 0;
+		  
+			}
+	  
+			frameCount++;
+	  
+			byte fdaIndex = FDA_SIZE;		// Which byte of the FDA are we filling in? Start at end because compare to zero slightly more efficient and and that is how data is encoded
+	  
+			byte brightnessBitsLeft=0;	// Currently building a brightness value? How many bits left to read in?
+	  
+			byte workingBrightness;		// currently building brightness value
+	  
+			do {			// step though each pixel in the fda
+		  
+		  
+				if (workingBitsLeft==0) {										// normalize to next byte if we are out of bits
+			  
+					workingByte=pgm_read_byte_near(candleBitstremPtr++);
+					workingBitsLeft=8;
+			  
+				}
+
+				if (brightnessBitsLeft>0) { //are we currently reading brightness? Consume as many bits as we can (if too few) or as we need (if too manY) from workingbyte into brightness
+			  
+					workingBrightness <<=1;
+					workingBrightness |= (workingByte & 0x01);
+			  
+					brightnessBitsLeft--;
+			  
+					if (brightnessBitsLeft==0) {
+
+				  
+						fda[--fdaIndex] = getDutyCycle(workingBrightness);
+				  
+					}
+			  
+					} else {
+			  
+					if ( (workingByte & 0x01) ==  0x00 ) {		// 0 bit indicates that this pixel has not changed
+				  
+						--fdaIndex;								// So skip it
+				  
+						} else {
+				  
+						brightnessBitsLeft = BRIGHTNESSBITS;					// Now we will read in the brightness value on next loops though
+						workingBrightness = 0;
+				  
+					}
+			  
+				}
+		  
+				workingByte >>=1;
+				workingBitsLeft--;
+		  
+			} while ( fdaIndex > 0 );
+	  
+		
+		
+		#ifdef TIMECHECK
+			PORTA  &= ~ _BV(1);
+		#endif
+		
+		}
+		
 	}
 
 
@@ -486,111 +570,6 @@ ISR(TIMER1_COMPA_vect)          // timer compare interrupt service routine
              
 }
 
-
-// get rid of semaphores so it runs in the simulator
-
-// #define SIMULATOR 
-
-// copy the next frame from program memory (candel_bitstream[]) to the RAM frame buffer (fda[])
-// assumes that the compiler will set the fda[] to all zeros on startup....
-
-void displayNextFrame() {
-	
-	  static byte const *candleBitstremPtr;     // next byte to read from the bitstream in program memory
-
-	  static byte workingByte;			  // current working byte
-	  
-	  static byte workingBitsLeft;      // how many bits left in the current working byte? 0 triggers loading next byte
-	  
-	  static framecounttype frameCount = FRAMECOUNT;		// what frame are we on?
-
-      #ifdef TIMECHECK
-		PORTA |= _BV(1);
-	  #endif
-	  	  
-	  if ( frameCount==FRAMECOUNT ) {							// Is this the last frame? 
-		  			
-			memset( fda , 0x00 , FDA_SIZE );			// zero out the display buffer, becuase that is how the encoder currently works
-			candleBitstremPtr=candle_bitstream;		// next byte to read from the bitstream in program memory
-			workingBitsLeft=0;							// how many bits left in the current working byte? 0 triggers loading next byte
-			frameCount= 0;
-			
-	  } 
-	    
-	  frameCount++;
-	  
-	  byte fdaIndex = FDA_SIZE;		// Which byte of the FDA are we filling in? Start at end because compare to zero slightly more efficient and and that is how data is encoded
-	  
-	  byte brightnessBitsLeft=0;	// Currently building a brightness value? How many bits left to read in?
-	  	  
-	  byte workingBrightness;		// currently building brightness value
-	  			 	  						 						 
-	  do {			// step though each pixel in the fda
-		  
-		  
-			if (workingBitsLeft==0) {										// normalize to next byte if we are out of bits
-					
-				workingByte=pgm_read_byte_near(candleBitstremPtr++);
-				workingBitsLeft=8;
-					
-			} 
-
-			if (brightnessBitsLeft>0) { //are we currently reading brightness? Consume as many bits as we can (if too few) or as we need (if too manY) from workingbyte into brightness
-				
-				workingBrightness <<=1;
-				workingBrightness |= (workingByte & 0x01);
-				
-				brightnessBitsLeft--;
-				
-				if (brightnessBitsLeft==0) {
-
-																													
-					fda[--fdaIndex] = getDutyCycle(workingBrightness);	
-					
-				}
-				
-			} else {
-				
-				if ( (workingByte & 0x01) ==  0x00 ) {		// 0 bit indicates that this pixel has not changed 
-					
-					--fdaIndex;								// So skip it					
-					
-				} else { 
-										
-					brightnessBitsLeft = BRIGHTNESSBITS;					// Now we will read in the brightness value on next loops though
-					workingBrightness = 0;
-					
-				} 
-				
-			}
-			
-			workingByte >>=1;
-			workingBitsLeft--;
-						  
-	  } while ( fdaIndex > 0 ); 
-	  
-	  	  
-	  #ifdef TIMECHECK
-		PORTA  &= ~ _BV(1);
-	  #endif 	  	
-}
-
-static inline void playVideo() {
-	
-	while (1) {
-		
-		
-		displayNextFrame();
-		
-		#ifndef SIMULATOR
-			while (!nextFrameFlag);
-		#endif
-					
-		nextFrameFlag = 0;
-	
-	  }
-
-}
 
 static inline void setup() {
 	
@@ -603,14 +582,17 @@ static inline void setup() {
   
   CLKPR = (1 << CLKPCE); // enable a change to CLKPR
   CLKPR = 0; // set the CLKDIV to 0 - was 0011b = div by 8
+  // TODO: we could do this in a fuse bit and save a couple of bytes
   
-  fdaInit();
   
   #ifndef SIMULATOR
 	  initInt();
   #endif
   
-   
+  #ifdef TIMECHECK
+	  DDRA = 0xff;		// make PORTA bits output so that we can see timeing patterns
+  #endif
+	 
 }
 
 
@@ -621,10 +603,10 @@ static void scanscreen( byte duty_cycle ) {
 		fda[x]=duty_cycle;
 		
 		#ifndef SIMULATOR
-			while (!nextFrameFlag);
+		//	while (!nextFrameFlag);
 		#endif
 
-		nextFrameFlag = 0;		
+		//nextFrameFlag = 0;		
 	}
 		
 }
@@ -636,12 +618,6 @@ static inline void testpattern() {
 
 }
 
-static inline void loop()
-{
-	
-	playVideo();
-	
-}
 
 
 
@@ -650,13 +626,9 @@ int main(void)
 {	
 	
 	setup();
-
-	testpattern();
 	
+	while (1);
 
-    while(1)
-    {
-
-        loop();
-    }
+	//testpattern();
+	
 }

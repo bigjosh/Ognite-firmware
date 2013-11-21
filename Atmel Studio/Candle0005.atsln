@@ -8,6 +8,7 @@ Global
 		Debug|AVR = Debug|AVR
 		Generate ASM|AVR = Generate ASM|AVR
 		Release|AVR = Release|AVR
+		Target Simulator|AVR = Target Simulator|AVR
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
 		{61DDA9C2-D07D-4D75-BEAA-5BC0E84F9D1E}.Debug|AVR.ActiveCfg = Debug|AVR
@@ -16,6 +17,8 @@ Global
 		{61DDA9C2-D07D-4D75-BEAA-5BC0E84F9D1E}.Generate ASM|AVR.Build.0 = Generate ASM|AVR
 		{61DDA9C2-D07D-4D75-BEAA-5BC0E84F9D1E}.Release|AVR.ActiveCfg = Release|AVR
 		{61DDA9C2-D07D-4D75-BEAA-5BC0E84F9D1E}.Release|AVR.Build.0 = Release|AVR
+		{61DDA9C2-D07D-4D75-BEAA-5BC0E84F9D1E}.Target Simulator|AVR.ActiveCfg = Target Simulator|AVR
+		{61DDA9C2-D07D-4D75-BEAA-5BC0E84F9D1E}.Target Simulator|AVR.Build.0 = Target Simulator|AVR
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

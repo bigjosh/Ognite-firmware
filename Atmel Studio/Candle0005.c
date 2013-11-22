@@ -105,19 +105,26 @@ static inline void nextFrame(void) {
 		  PORTA |= _BV(1);
 	  #endif
 		
-	  if (diagPos<(FDA_SIZE*2)) {		// We are currently generating the startup diagnostics screens
+	  if (diagPos<(FDA_SIZE*3)) {		// We are currently generating the startup diagnostics screens
 		  
-		  if (diagPos<FDA_SIZE) {
+		  if (diagPos<FDA_SIZE) {						// Fill screen in with pixels
 			  
 			  fda[diagPos++] = FULL_ON_DUTYCYCLE;
 			  
-			  } else {
+		  } else if (diagPos<FDA_SIZE*2) {				// Empty out
 			  
 			  fda[(diagPos++)-FDA_SIZE] = 0;
+		  
+		  } else {										// Brightness test pattern
 			  
+			  for(byte x=0;x<(2^BRIGHTNESSBITS);x++ ) {
+				fda[x] = getDutyCycle(x); 
+			  }
+			  
+			  diagPos++;
 		  }
 		  
-		  } else {  // normal video playback....
+	   } else {  // normal video playback....
 		  
 		  // Time to display the next frame in the animation...
 		  // copy the next frame from program memory (candel_bitstream[]) to the RAM frame buffer (fda[])
@@ -228,7 +235,7 @@ static inline void refreshScreen(void)
 		PORTA |=_BV(0);				// twiddle A0 bit for oscilloscope timing
 	#endif
  
-	byte fdaptr = 0;		 // Where are we in scanning through the FDA?
+	byte *fdaptr = fda;		 // Where are we in scanning through the FDA?
 	
 	byte rowDirectionBitsRotating = rowDirectionBits;	// Working space for rowDirections bits that we shift down once for each row
 														// Bit 0 will be bit for the current row. 
@@ -244,7 +251,7 @@ static inline void refreshScreen(void)
   
 			// get the brightness of the current LED
 
-			byte b = fda[ fdaptr++ ];
+			byte b = *( fdaptr++ );
   
 			// If the LED is off, then don't need to do anything since all LEDs are already off all the time except for a split second inside this routine....
 
@@ -275,21 +282,38 @@ static inline void refreshScreen(void)
 		  
 				}
 				
+				b--;					// decrement the brightness so if it was b==1, now it will be b==0
 				
-
-				while (b--) {
-
+				if (b==0) {				// If brightness = 1, then star on for a VERY short blink
+					
 					DDRB = ddrbt;
 					DDRD = ddrdt;
-
-					// Ok, LED is on now!
-
 					DDRB = 0;
 					DDRD = 0;
-
-					// ...and off again
-
+					
+				} else {
+					
+					// b has already be decremented here to account for extra time looping...
+					
+					
+					DDRB = ddrbt;
+					DDRD = ddrdt;
+										
+					// Ok, LED is on now!
+					
+					// This is the tightest loop possible - can't figure out how to do it in C	
+					
+					//while (b--) asm volatile ("");		does not work because it generates a strange RJMP +0 loop preamble
+					
+					asm volatile ("L_%=:dec %0\n\tBRNE L_%=": : "r" (b) );
+										
+					DDRB = 0;
+					DDRD = 0;
+					
 				}
+
+				// ...and off again
+
 			}
 		  
 		}
@@ -299,7 +323,7 @@ static inline void refreshScreen(void)
 	}
 	
 	#ifdef TIMECHECK
-	PORTA &= ~_BV(0);
+		PORTA &= ~_BV(0);
 	#endif
 	
 	 

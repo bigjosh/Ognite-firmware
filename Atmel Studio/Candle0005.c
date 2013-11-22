@@ -92,23 +92,10 @@ byte fda[FDA_SIZE];
 #define ROWS FDA_Y_MAX
 #define COLS FDA_X_MAX
 
-
-static byte const rowDirectionBits = 0b01010101;      // 0=row goes low, 1=Row goes high
-
-static byte const portBRowBits[ROWS]  = {_BV(0),_BV(0),_BV(2),_BV(2),_BV(4),_BV(4),_BV(6),_BV(6) };
-static byte const portDRowBits[ROWS]  = {     0,     0,     0,     0,     0,     0,     0,     0 };    
-
-// Note that col is always opposite of row so we don't need colDirectionBits
-	
-static byte const portBColBits[COLS] = {_BV(7),_BV(5),_BV(3), _BV(1),     0};
-static byte const portDColBits[COLS] = {     0,     0,      0,     0,_BV(6)};
 		
 #define NOP __asm__("nop\n\t")
 
-#define REFRESH_PER_FRAME ( REFRESH_RATE / FRAME_RATE )		// How many refreshes before we trigger the next frame to be drawn?
-
 byte diagPos=0;		// current screen pixel when scanning in diagnostic modes 0=starting to turn on, FDA_SIZE=starting to turn off, FDA_SIZE*2=done with diagnostics
-
 
 // Decode next frame into the FDA
 
@@ -215,10 +202,23 @@ static inline void nextFrame(void) {
 	  
 }
 
+static byte const rowDirectionBits = 0b01010101;      // 0=row goes low, 1=Row goes high
+
+static byte const portBRowBits[ROWS]  = {_BV(0),_BV(0),_BV(2),_BV(2),_BV(4),_BV(4),_BV(6),_BV(6) };
+static byte const portDRowBits[ROWS]  = {     0,     0,     0,     0,     0,     0,     0,     0 };
+
+// Note that col is always opposite of row so we don't need colDirectionBits
+
+static byte const portBColBits[COLS] = {_BV(7),_BV(5),_BV(3), _BV(1),     0};
+static byte const portDColBits[COLS] = {     0,     0,      0,     0,_BV(6)};
+
+
+#define REFRESH_PER_FRAME ( REFRESH_RATE / FRAME_RATE )		// How many refreshes before we trigger the next frame to be drawn?
+
 byte refreshCount=0;
 
 // Do a single full screen refresh
-// update buffer to next frame afterwards if it is time
+// call nextframe() to decode next frame into buffer afterwards if it is time
 
 static inline void refreshScreen(void) 
 {
@@ -229,12 +229,17 @@ static inline void refreshScreen(void)
 	#endif
  
 	byte fdaptr = 0;		 // Where are we in scanning through the FDA?
+	
+	byte rowDirectionBitsRotating = rowDirectionBits;	// Working space for rowDirections bits that we shift down once for each row
+														// Bit 0 will be bit for the current row. 
+														// TODO: in ASM, would could shift though the carry flag and jmp based on that and save a bit test
+	
  
 	for( byte int_y = 0 ; int_y < FDA_Y_MAX ; int_y++ ) {
 
 		byte portBRowBitsCache = portBRowBits[int_y];	
 		byte portDRowBitsCache = portDRowBits[int_y];
-  	  
+				
 		for( byte int_x = 0 ; int_x < FDA_X_MAX ; int_x++) {
   
 			// get the brightness of the current LED
@@ -250,7 +255,7 @@ static inline void refreshScreen(void)
 				byte ddrbt;
 				byte ddrdt;
 
-				if ( rowDirectionBits & _BV( int_y ) ) {    /// for this row, row pin is high and col pins are low....
+				if ( rowDirectionBitsRotating & _BV(0) ) {    // lowest bit of the rotating bits is for this row. If bit=1 then row pin is high and col pins are low....
 					
 					PORTB = portBRowBitsCache;
 					PORTD = portDRowBitsCache;
@@ -269,6 +274,8 @@ static inline void refreshScreen(void)
 					ddrdt  = PORTD | portDRowBitsCache;
 		  
 				}
+				
+				
 
 				while (b--) {
 
@@ -286,8 +293,15 @@ static inline void refreshScreen(void)
 			}
 		  
 		}
+		
+		rowDirectionBitsRotating >>= 1;		// Shift bits down so bit 0 has the value for the next row
 	
 	}
+	
+	#ifdef TIMECHECK
+	PORTA &= ~_BV(0);
+	#endif
+	
 	 
 	refreshCount++;
 	  			  
@@ -301,9 +315,6 @@ static inline void refreshScreen(void)
 	  
 	}
 	  
-	#ifdef TIMECHECK
-		PORTA &= ~_BV(0);
-	#endif
              
 }
 

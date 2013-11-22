@@ -64,10 +64,10 @@ const byte brightness2Dutycycle[DUTY_CYCLE_SIZE] = {
 
 #define getDutyCycle(b) (brightness2Dutycycle[b])
 
-#define FDA_X_MAX 5
-#define FDA_Y_MAX 8
+#define FDA_X_MAX ( (byte) 5 )
+#define FDA_Y_MAX ( (byte) 8 )
 
-#define FDA_SIZE (FDA_X_MAX*FDA_Y_MAX)
+#define FDA_SIZE ( (byte) (FDA_X_MAX*FDA_Y_MAX) )
 
 // This is the display array!
 // Array of duty cycles levels. Brightness (0=off,  255=brightest)
@@ -209,10 +209,15 @@ static inline void nextFrame(void) {
 	  
 }
 
+#define ALL_PORTD_ROWS_ZERO 1		// Just a shortcut hardcoded that all PORTD row bits are zero 
+
 static byte const rowDirectionBits = 0b01010101;      // 0=row goes low, 1=Row goes high
 
 static byte const portBRowBits[ROWS]  = {_BV(0),_BV(0),_BV(2),_BV(2),_BV(4),_BV(4),_BV(6),_BV(6) };
-static byte const portDRowBits[ROWS]  = {     0,     0,     0,     0,     0,     0,     0,     0 };
+	
+#ifndef ALL_PORTD_ROWS_ZERO
+	static byte const portDRowBits[ROWS]  = {     0,     0,     0,     0,     0,     0,     0,     0 };
+#endif
 
 // Note that col is always opposite of row so we don't need colDirectionBits
 
@@ -245,7 +250,10 @@ static inline void refreshScreen(void)
 	for( byte int_y = 0 ; int_y < FDA_Y_MAX ; int_y++ ) {
 
 		byte portBRowBitsCache = portBRowBits[int_y];	
-		byte portDRowBitsCache = portDRowBits[int_y];
+		
+		#ifndef ALL_PORTD_ROWS_ZERO			
+			byte portDRowBitsCache = portDRowBits[int_y];
+		#endif
 				
 		for( byte int_x = 0 ; int_x < FDA_X_MAX ; int_x++) {
   
@@ -265,12 +273,21 @@ static inline void refreshScreen(void)
 				if ( rowDirectionBitsRotating & _BV(0) ) {    // lowest bit of the rotating bits is for this row. If bit=1 then row pin is high and col pins are low....
 					
 					PORTB = portBRowBitsCache;
-					PORTD = portDRowBitsCache;
+					
+					#ifndef ALL_PORTD_ROWS_ZERO
+						PORTD = portDRowBitsCache;				
+					#endif
 
 					// Only need to set the correct bits in PORTB and PORTD to drive the row high (col bit will get set to 0)
 
 					ddrbt  = portBRowBitsCache | portBColBits[int_x] ;       // enable output for the Row pins to drive high, also enable output for col pins which are zero so will go low
-					ddrdt  = portDRowBitsCache | portDColBits[int_x] ;
+					
+					
+					#ifndef ALL_PORTD_ROWS_ZERO
+						ddrdt  = portDRowBitsCache | portDColBits[int_x] ;
+					#else
+						ddrdt = portDColBits[int_x];
+					#endif
 
 				} else {      // row goes low, cols go high....
 
@@ -278,7 +295,12 @@ static inline void refreshScreen(void)
 					PORTD = portDColBits[int_x];
 
 					ddrbt  = PORTB | portBRowBitsCache;               // enable output for the col pins to drive high, also enable output for row pins which are zero so will go low
-					ddrdt  = PORTD | portDRowBitsCache;
+					
+					#ifndef ALL_PORTD_ROWS_ZERO
+						ddrdt  = PORTD | portDRowBitsCache;
+					#else
+						ddrdt  = PORTD;
+					#endif
 		  
 				}
 				

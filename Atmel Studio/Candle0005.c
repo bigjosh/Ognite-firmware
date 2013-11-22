@@ -82,7 +82,7 @@ byte fda[FDA_SIZE];
 // Set up the pins - call on startup
 
 
-#define REFRESH_RATE 62			// Display Refresh rate in Hz (picked to match the fastest we can get WDT wakeups)
+#define REFRESH_RATE ( (byte) 62 )			// Display Refresh rate in Hz (picked to match the fastest we can get WDT wakeups)
 
 #define TIMECHECK 1				// Twittle bits so we can watch timing on an osciliscope
 								// PA0 (pin 5) goes high while we are in the screen refreshing/PWM interrupt routine
@@ -209,6 +209,7 @@ static inline void nextFrame(void) {
 	  
 }
 
+
 #define ALL_PORTD_ROWS_ZERO 1		// Just a shortcut hardcoded that all PORTD row bits are zero 
 
 static byte const rowDirectionBits = 0b01010101;      // 0=row goes low, 1=Row goes high
@@ -275,7 +276,9 @@ static inline void refreshScreen(void)
 					PORTB = portBRowBitsCache;
 					
 					#ifndef ALL_PORTD_ROWS_ZERO
-						PORTD = portDRowBitsCache;				
+						PORTD = portDRowBitsCache;		
+					#else	
+						PORTD = 0;		
 					#endif
 
 					// Only need to set the correct bits in PORTB and PORTD to drive the row high (col bit will get set to 0)

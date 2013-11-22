@@ -118,9 +118,12 @@ byte refreshCount=0;
 static inline void refreshScreen(void) 
 {
 	
-  #ifdef TIMECHECK          
+  #ifdef TIMECHECK    
+	DDRA |= _BV(0);		 // Set PORTA0 for output. Use OR becuase it compiles to single SBI instruction
     PORTA |=_BV(0);      // twiddle A0 bit for oscilloscope timing
   #endif
+ 
+  byte fdaptr = 0;		 // Where are we in scanning thugh the FDA?
  
   for( byte int_y = 0 ; int_y < FDA_Y_MAX ; int_y++ ) {
   	  
@@ -128,7 +131,7 @@ static inline void refreshScreen(void)
   
 		  // get the brightness of the current LED
 
-		  byte b = fda[ (int_y*FDA_X_MAX) + int_x ];
+		  byte b = fda[ fdaptr++ ];
   
 		  // If the LED is off, then don't need to do anything since all LEDs are already off all the time except for a split second inside this routine....
 
@@ -356,22 +359,9 @@ int main(void)
 // This is "static inline" so The code will just be inserted directly into the warmstart code avoiding overhead of a call/ret
 
 static inline void userWakeRoutine(void) {
-	
-	// Just for testing, lets twiddle PORTD0 bit on and off with a little delay between...
-	
-	DDRA = 0x03;
-	PORTA = 0x01;
-	
+		
 	refreshScreen();
 	
-	//for(unsigned int x=0;x<1000;x++) {asm("NOP");asm("NOP");asm("NOP");asm("NOP");}
-			
-	
-	PORTA =0x02;
-	
-	for( unsigned int y=0;y<1000;y++) {asm("NOP");asm("NOP");asm("NOP");asm("NOP");}
-		
-	PORTA=0x00;
 }
 
 void  __attribute__ ((naked)) warmstart(void) {

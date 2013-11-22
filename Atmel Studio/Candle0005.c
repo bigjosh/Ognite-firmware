@@ -98,7 +98,6 @@ static byte const rowDirectionBits = 0b01010101;      // 0=row goes low, 1=Row g
 static byte const portBRowBits[ROWS]  = {_BV(0),_BV(0),_BV(2),_BV(2),_BV(4),_BV(4),_BV(6),_BV(6) };
 static byte const portDRowBits[ROWS]  = {     0,     0,     0,     0,     0,     0,     0,     0 };    
 
-
 // Note that col is always opposite of row so we don't need colDirectionBits
 	
 static byte const portBColBits[COLS] = {_BV(7),_BV(5),_BV(3), _BV(1),     0};
@@ -110,6 +109,112 @@ static byte const portDColBits[COLS] = {     0,     0,      0,     0,_BV(6)};
 
 byte diagPos=0;		// current screen pixel when scanning in diagnostic modes 0=starting to turn on, FDA_SIZE=starting to turn off, FDA_SIZE*2=done with diagnostics
 
+
+// Decode next frame into the FDA
+
+static inline void nextFrame(void) {
+	
+	  #ifdef TIMECHECK
+		  PORTA |= _BV(1);
+	  #endif
+		
+	  if (diagPos<(FDA_SIZE*2)) {		// We are currently generating the startup diagnostics screens
+		  
+		  if (diagPos<FDA_SIZE) {
+			  
+			  fda[diagPos++] = FULL_ON_DUTYCYCLE;
+			  
+			  } else {
+			  
+			  fda[(diagPos++)-FDA_SIZE] = 0;
+			  
+		  }
+		  
+		  } else {  // normal video playback....
+		  
+		  // Time to display the next frame in the animation...
+		  // copy the next frame from program memory (candel_bitstream[]) to the RAM frame buffer (fda[])
+		  
+		  static byte const *candleBitstremPtr;     // next byte to read from the bitstream in program memory
+
+		  static byte workingByte;			  // current working byte
+		  
+		  static byte workingBitsLeft;      // how many bits left in the current working byte? 0 triggers loading next byte
+		  
+		  static framecounttype frameCount = FRAMECOUNT;		// what frame are we on?
+
+		  
+		  if ( frameCount==FRAMECOUNT ) {							// Is this the last frame?
+			  
+			  memset( fda , 0x00 , FDA_SIZE );			// zero out the display buffer, becuase that is how the encoder currently works
+			  candleBitstremPtr=videobitstream;		// next byte to read from the bitstream in program memory
+			  workingBitsLeft=0;							// how many bits left in the current working byte? 0 triggers loading next byte
+			  frameCount= 0;
+			  
+		  }
+		  
+		  frameCount++;
+		  
+		  byte fdaIndex = FDA_SIZE;		// Which byte of the FDA are we filling in? Start at end because compare to zero slightly more efficient and and that is how data is encoded
+		  
+		  byte brightnessBitsLeft=0;	// Currently building a brightness value? How many bits left to read in?
+		  
+		  byte workingBrightness;		// currently building brightness value
+		  
+		  do {			// step though each pixel in the fda
+			  
+			  
+			  if (workingBitsLeft==0) {										// normalize to next byte if we are out of bits
+				  
+				  workingByte=pgm_read_byte_near(candleBitstremPtr++);
+				  workingBitsLeft=8;
+				  
+			  }
+
+			  if (brightnessBitsLeft>0) { //are we currently reading brightness? Consume as many bits as we can (if too few) or as we need (if too manY) from workingbyte into brightness
+				  
+				  workingBrightness <<=1;
+				  workingBrightness |= (workingByte & 0x01);
+				  
+				  brightnessBitsLeft--;
+				  
+				  if (brightnessBitsLeft==0) {
+
+					  
+					  fda[--fdaIndex] = getDutyCycle(workingBrightness);
+					  
+				  }
+				  
+				  } else {
+				  
+				  if ( (workingByte & 0x01) ==  0x00 ) {		// 0 bit indicates that this pixel has not changed
+					  
+					  --fdaIndex;								// So skip it
+					  
+					  } else {
+					  
+					  brightnessBitsLeft = BRIGHTNESSBITS;					// Now we will read in the brightness value on next loops though
+					  workingBrightness = 0;
+					  
+				  }
+				  
+			  }
+			  
+			  workingByte >>=1;
+			  workingBitsLeft--;
+			  
+		  } while ( fdaIndex > 0 );
+		  
+		  
+		  
+		  #ifdef TIMECHECK
+			 PORTA  &= ~_BV(1);
+		  #endif
+		  
+	  }
+	  
+}
+
 byte refreshCount=0;
 
 // Do a single full screen refresh
@@ -118,73 +223,72 @@ byte refreshCount=0;
 static inline void refreshScreen(void) 
 {
 	
-  #ifdef TIMECHECK    
-	DDRA |= _BV(0);		 // Set PORTA0 for output. Use OR becuase it compiles to single SBI instruction
-    PORTA |=_BV(0);      // twiddle A0 bit for oscilloscope timing
-  #endif
+	#ifdef TIMECHECK    
+		DDRA = _BV(0)|_BV(1);		// Set PORTA0 for output. Use OR because it compiles to single SBI instruction
+		PORTA |=_BV(0);				// twiddle A0 bit for oscilloscope timing
+	#endif
  
-  byte fdaptr = 0;		 // Where are we in scanning thugh the FDA?
+	byte fdaptr = 0;		 // Where are we in scanning through the FDA?
  
-  for( byte int_y = 0 ; int_y < FDA_Y_MAX ; int_y++ ) {
+	for( byte int_y = 0 ; int_y < FDA_Y_MAX ; int_y++ ) {
+
+		byte portBRowBitsCache = portBRowBits[int_y];	
+		byte portDRowBitsCache = portDRowBits[int_y];
   	  
-	  for( byte int_x = 0 ; int_x < FDA_X_MAX ; int_x++) {
+		for( byte int_x = 0 ; int_x < FDA_X_MAX ; int_x++) {
   
-		  // get the brightness of the current LED
+			// get the brightness of the current LED
 
-		  byte b = fda[ fdaptr++ ];
+			byte b = fda[ fdaptr++ ];
   
-		  // If the LED is off, then don't need to do anything since all LEDs are already off all the time except for a split second inside this routine....
+			// If the LED is off, then don't need to do anything since all LEDs are already off all the time except for a split second inside this routine....
 
-		  if (b>0) {
+			if (b>0) {
 
-			 // Assume DDRB = DDRD = 0 coming into the INt since that is the Way we should have left them when we exited last...
+				// Assume DDRB = DDRD = 0 coming into the INt since that is the Way we should have left them when we exited last...
 
-			  byte ddrbt;
-			  byte ddrdt;
+				byte ddrbt;
+				byte ddrdt;
 
-			  if ( rowDirectionBits & _BV( int_y ) ) {    /// for this row, row pin is high and col pins are low....
+				if ( rowDirectionBits & _BV( int_y ) ) {    /// for this row, row pin is high and col pins are low....
+					
+					PORTB = portBRowBitsCache;
+					PORTD = portDRowBitsCache;
 
-				  // Only need to set the correct bits in PORTB and PORTD to drive the row high (col bit will get set to 0)
+					// Only need to set the correct bits in PORTB and PORTD to drive the row high (col bit will get set to 0)
 
-				  PORTB = portBRowBits[int_y];             // Row pins go high level
-				  PORTD = portDRowBits[int_y];             // this will activate PULL-UP on the high pin, which is ok...
+					ddrbt  = portBRowBitsCache | portBColBits[int_x] ;       // enable output for the Row pins to drive high, also enable output for col pins which are zero so will go low
+					ddrdt  = portDRowBitsCache | portDColBits[int_x] ;
 
-				  ddrbt  = PORTB | portBColBits[int_x] ;       // enable output for the Row pins to drive high, also enable output for col pins which are zero so will go low
-				  ddrdt  = PORTD | portDColBits[int_x] ;
+				} else {      // row goes low, cols go high....
 
-			  } else {      // row goes low, cols go high....
+					PORTB = portBColBits[int_x];
+					PORTD = portDColBits[int_x];
 
-				  PORTB = portBColBits[int_x];                        // Col pins go high level
-				  PORTD = portDColBits[int_x];
-
-				  ddrbt  = PORTB | portBRowBits[int_y];               // enable output for the col pins to drive high, also enable output for row pins which are zero so will go low
-				  ddrdt  = PORTD | portDRowBits[int_y];
+					ddrbt  = PORTB | portBRowBitsCache;               // enable output for the col pins to drive high, also enable output for row pins which are zero so will go low
+					ddrdt  = PORTD | portDRowBitsCache;
 		  
-			  }
+				}
 
+				while (b--) {
 
-			  while (b--) {
+					DDRB = ddrbt;
+					DDRD = ddrdt;
 
+					// Ok, LED is on now!
 
-				DDRB = ddrbt;
-				DDRD = ddrdt;
+					DDRB = 0;
+					DDRD = 0;
 
-				// Ok, LED is on now!
+					// ...and off again
 
-				//NOP;    // ....wait.....a....split...second.....
-
-				DDRB = 0;
-				DDRD = 0;
-
-				// ...and off again
-
-			  }
-		  }
+				}
+			}
 		  
 		}
 	
 	}
-	  
+	 
 	refreshCount++;
 	  			  
 	if (refreshCount >= REFRESH_PER_FRAME ) {			// step to next frame in the animation sequence?
@@ -193,107 +297,10 @@ static inline void refreshScreen(void)
 	  
 	  // TODO: this diagnostic screen generator costs 42 bytes. Can we make it smaller or just get rid of it?
 	  
-	  if (diagPos<(FDA_SIZE*2)) {		// We are currently generating the startup diagnostics screens
-		  
-		  if (diagPos<FDA_SIZE) {
-			  
-			  fda[diagPos++] = FULL_ON_DUTYCYCLE;
-			  
-		  } else {
-		  
-			  fda[(diagPos++)-FDA_SIZE] = 0;
-			  
-		  }
-		  
-	  } else {  // normal video playback....
-		  			  
-			// Time to display the next frame in the animation...	
-			// copy the next frame from program memory (candel_bitstream[]) to the RAM frame buffer (fda[])	 						
-						
-			static byte const *candleBitstremPtr;     // next byte to read from the bitstream in program memory
-
-			static byte workingByte;			  // current working byte
+	  nextFrame();
 	  
-			static byte workingBitsLeft;      // how many bits left in the current working byte? 0 triggers loading next byte
-	  
-			static framecounttype frameCount = FRAMECOUNT;		// what frame are we on?
-
-			#ifdef TIMECHECK
-			PORTA |= _BV(1);
-			#endif
-	  
-			if ( frameCount==FRAMECOUNT ) {							// Is this the last frame?
-		  
-				memset( fda , 0x00 , FDA_SIZE );			// zero out the display buffer, becuase that is how the encoder currently works
-				candleBitstremPtr=videobitstream;		// next byte to read from the bitstream in program memory
-				workingBitsLeft=0;							// how many bits left in the current working byte? 0 triggers loading next byte
-				frameCount= 0;
-		  
-			}
-	  
-			frameCount++;
-	  
-			byte fdaIndex = FDA_SIZE;		// Which byte of the FDA are we filling in? Start at end because compare to zero slightly more efficient and and that is how data is encoded
-	  
-			byte brightnessBitsLeft=0;	// Currently building a brightness value? How many bits left to read in?
-	  
-			byte workingBrightness;		// currently building brightness value
-	  
-			do {			// step though each pixel in the fda
-		  
-		  
-				if (workingBitsLeft==0) {										// normalize to next byte if we are out of bits
-			  
-					workingByte=pgm_read_byte_near(candleBitstremPtr++);
-					workingBitsLeft=8;
-			  
-				}
-
-				if (brightnessBitsLeft>0) { //are we currently reading brightness? Consume as many bits as we can (if too few) or as we need (if too manY) from workingbyte into brightness
-			  
-					workingBrightness <<=1;
-					workingBrightness |= (workingByte & 0x01);
-			  
-					brightnessBitsLeft--;
-			  
-					if (brightnessBitsLeft==0) {
-
-				  
-						fda[--fdaIndex] = getDutyCycle(workingBrightness);
-				  
-					}
-			  
-					} else {
-			  
-					if ( (workingByte & 0x01) ==  0x00 ) {		// 0 bit indicates that this pixel has not changed
-				  
-						--fdaIndex;								// So skip it
-				  
-						} else {
-				  
-						brightnessBitsLeft = BRIGHTNESSBITS;					// Now we will read in the brightness value on next loops though
-						workingBrightness = 0;
-				  
-					}
-			  
-				}
-		  
-				workingByte >>=1;
-				workingBitsLeft--;
-		  
-			} while ( fdaIndex > 0 );
-	  
-		
-		
-		#ifdef TIMECHECK
-			PORTA  &= ~ _BV(1);
-		#endif
-		
-		}
-		
 	}
-
-
+	  
 	#ifdef TIMECHECK
 		PORTA &= ~_BV(0);
 	#endif
@@ -384,14 +391,12 @@ void  __attribute__ ((naked)) warmstart(void) {
 	// Now it is time to get ready for bed. We should have gotten here because there was just a WDT reset, so...
 	// By default after any reset, the watchdog timeout will be 16ms since the WDP bits in WDTCSR are set to zero on reset. We'd need to set the WDTCSR if we want a different timeout
 	// After a WDT reset, the WatchDog should also still be on by default because the WDRF will be set after a WDT reset, and "WDE is overridden by WDRF in MCUSR. See “MCUSR – MCU Status Register” on page 45for description of WDRF. This means thatWDE is always set when WDRF is set."
-	
-	// No need to set WDTCR here since we want 16ms timeout (about 60hz) and that happens to be all zero bits, which is the default initialization of the register after reset
-	
+		
 	
 	MCUCR = _BV( SE ) |	_BV(SM1 ) | _BV(SM0);		// Sleep enable (makes sleep instruction work), and sets sleep mode to "Power Down" (the deepest sleep)
 	
 	
-	//TODO: THis just lets us turn off watchdog so We can grab the chip via the debugger...
+	//TODO: THis just lets us turn off watchdog so we can grab the chip via the debugger...
 	//DDRA = 0x02;
 	
 	

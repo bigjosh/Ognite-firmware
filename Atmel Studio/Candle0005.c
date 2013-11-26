@@ -104,25 +104,47 @@ static inline void nextFrame(void) {
 	  #ifdef TIMECHECK
 		  PORTA |= _BV(1);
 	  #endif
+	  
+	  // TODO: For production version, probably take out brightness test but first make sure 5 bits is really visible. 
 		
-	  if (diagPos<(FDA_SIZE*3)) {		// We are currently generating the startup diagnostics screens
+	  if (diagPos<(FDA_SIZE*4)) {		// We are currently generating the startup diagnostics screens
 		  
 		  if (diagPos<FDA_SIZE) {						// Fill screen in with pixels
 			  
-			  fda[diagPos++] = FULL_ON_DUTYCYCLE;
+			  fda[diagPos] = FULL_ON_DUTYCYCLE;
 			  
 		  } else if (diagPos<FDA_SIZE*2) {				// Empty out
 			  
-			  fda[(diagPos++)-FDA_SIZE] = 0;
+			  fda[(diagPos)-FDA_SIZE] = 0;
 		  
-		  } else {										// Brightness test pattern
+		  } else /* if (diagPos>=FDA_SIZE*2) && (diagPos<FDA_SIZE*4) */ {										// Brightness test pattern
 			  
-			  for(byte x=0;x<(2^BRIGHTNESSBITS);x++ ) {
-				fda[x] = getDutyCycle(x); 
-			  }
-			  
-			  diagPos++;
+				byte step=( diagPos-(FDA_SIZE*2) );
+			
+				byte fdaptr = 0;
+			
+				for(byte y=0; y<FDA_Y_MAX;y++) {
+				
+					byte b = getDutyCycle( step & (_BV(BRIGHTNESSBITS)-1) );				// normalize step variable to always cycle within brightness range
+				
+					for(byte x=0;x<FDA_X_MAX;x++) {
+						fda[fdaptr++] = b;
+					}
+				
+					step++;
+				}
+			  			 
+			
+			/*  
+			for(byte x=0;x<FDA_SIZE;x++ ) {
+				fda[x] =getDutyCycle( (x) & (_BV(BRIGHTNESSBITS)-1) );
+			}
+			*/
+
+			
 		  }
+			  
+		  diagPos++;
 		  
 	   } else {  // normal video playback....
 		  
@@ -210,7 +232,7 @@ static inline void nextFrame(void) {
 }
 
 
-#define ALL_PORTD_ROWS_ZERO 1		// Just a shortcut hardcoded that all PORTD row bits are zero 
+#define ALL_PORTD_ROWS_ZERO 1		// Just a shortcut hard-coded that all PORTD row bits are zero 
 
 static byte const rowDirectionBits = 0b01010101;      // 0=row goes low, 1=Row goes high
 
@@ -228,7 +250,7 @@ static byte const portDColBits[COLS] = {     0,     0,      0,     0,_BV(6)};
 
 #define REFRESH_PER_FRAME ( REFRESH_RATE / FRAME_RATE )		// How many refreshes before we trigger the next frame to be drawn?
 
-byte refreshCount=0;
+byte refreshCount =REFRESH_PER_FRAME+1;
 
 // Do a single full screen refresh
 // call nextframe() to decode next frame into buffer afterwards if it is time
@@ -260,7 +282,7 @@ static inline void refreshScreen(void)
   
 			// get the brightness of the current LED
 
-			byte b = *( fdaptr++ );
+			register byte b = *( fdaptr++ );		// Want this in a register because later we will loop on it and want the loop entrance to be quick
   
 			// If the LED is off, then don't need to do anything since all LEDs are already off all the time except for a split second inside this routine....
 
@@ -284,8 +306,7 @@ static inline void refreshScreen(void)
 					// Only need to set the correct bits in PORTB and PORTD to drive the row high (col bit will get set to 0)
 
 					ddrbt  = portBRowBitsCache | portBColBits[int_x] ;       // enable output for the Row pins to drive high, also enable output for col pins which are zero so will go low
-					
-					
+										
 					#ifndef ALL_PORTD_ROWS_ZERO
 						ddrdt  = portDRowBitsCache | portDColBits[int_x] ;
 					#else
@@ -307,37 +328,26 @@ static inline void refreshScreen(void)
 		  
 				}
 				
-				b--;					// decrement the brightness so if it was b==1, now it will be b==0
-				
-				if (b==0) {				// If brightness = 1, then star on for a VERY short blink
+				// Now comes the business of Actually turning on the LED. 
+																													
+				// This is the tightest loop possible - I can't figure out how to do it in C	
 					
-					DDRB = ddrbt;
-					DDRD = ddrdt;
-					DDRB = 0;
-					DDRD = 0;
-					
-				} else {
-					
-					// b has already be decremented here to account for extra time looping...
-					
-					
-					DDRB = ddrbt;
-					DDRD = ddrdt;
-										
-					// Ok, LED is on now!
-					
-					// This is the tightest loop possible - can't figure out how to do it in C	
-					
-					//while (b--) asm volatile ("");		does not work because it generates a strange RJMP +0 loop preamble
-					
-					asm volatile ("L_%=:dec %0\n\tBRNE L_%=": : "r" (b) );
-										
-					DDRB = 0;
-					DDRD = 0;
-					
-				}
+				//while (b--) asm volatile ("");		//does not work because it generates a strange RJMP +0 loop preamble
 
-				// ...and off again
+				//_delay_loop_1( b );					// DOes not work becuase it pathalogically loads b into a register
+					
+				asm volatile (
+				
+					"OUT %0,%1 \n\t"			// DO DDRD first becuase in current config it will never actuallt turn the LED on
+					"OUT %2,%3 \n\t"			// Ok, LED is on now!
+					"L_%=:dec %4 \n\t"
+					"BRNE L_%= \n\t"
+					"OUT %2,__zero_reg__ \n\t"			// Do DDRB first since this will definitely turn off the LED (R1 always equals 0)
+					"OUT %0,R1 \n\t"
+					
+					: :  "I" (_SFR_IO_ADDR(DDRD)) , "r" (ddrdt) , "I" (_SFR_IO_ADDR(DDRB)) , "r" (ddrbt) , "r" (b) 
+					
+				);
 
 			}
 		  
@@ -352,11 +362,11 @@ static inline void refreshScreen(void)
 	#endif
 	
 	 
-	refreshCount++;
+	refreshCount--;
 	  			  
-	if (refreshCount >= REFRESH_PER_FRAME ) {			// step to next frame in the animation sequence?
+	if (refreshCount == 0 ) {			// step to next frame in the animation sequence?
 		
-	  refreshCount=0;
+	  refreshCount=REFRESH_PER_FRAME+1;
 	  
 	  // TODO: this diagnostic screen generator costs 42 bytes. Can we make it smaller or just get rid of it?
 	  

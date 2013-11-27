@@ -26,6 +26,7 @@
 
 // TODO: Maybe try to get everything running with fuze-set 4mhz so that we can run battery down to 2.7 volts 
 
+
 #define F_CPU 8000000UL  // We will be at 8 MHz once we get all booted up and get rid of the prescaller
 
 #include <avr/io.h>
@@ -36,9 +37,37 @@
 
 #include <avr/sleep.h>
 
-#include <avr/wdt.h>					// Watchdog Functions
+#include <avr/wdt.h>				// Watchdog Functions
 
 #include <string.h>					// memset()
+
+
+//#define PRODUCTION				// Production burn?
+
+
+
+#ifdef PRODUCTION
+
+	FUSES = {
+	
+		.low = (FUSE_SUT1 & FUSE_SUT0 & FUSE_CKSEL3 & FUSE_CKSEL2 & FUSE_CKSEL0),			// Startup with clock/8, no startup delay, 8Mhz internal RC
+		.high =  HFUSE_DEFAULT,
+		.extended = EFUSE_DEFAULT
+	
+	};
+	
+#else
+	
+	FUSES = {
+		
+		.low = (FUSE_CKDIV8 & FUSE_SUT1 & FUSE_SUT0 & FUSE_CKSEL3 & FUSE_CKSEL2 & FUSE_CKSEL0),			// Startup with clock/8, no startup delay, 8Mhz internal RC
+		.high =  HFUSE_DEFAULT,
+		.extended = EFUSE_DEFAULT
+		
+	};
+		
+#endif
+
 
 #include "candle.h"
 
@@ -151,6 +180,9 @@ static inline void nextFrame(void) {
 		  // Time to display the next frame in the animation...
 		  // copy the next frame from program memory (candel_bitstream[]) to the RAM frame buffer (fda[])
 		  
+		  
+		  
+		  
 		  static byte const *candleBitstremPtr;     // next byte to read from the bitstream in program memory
 
 		  static byte workingByte;			  // current working byte
@@ -186,28 +218,29 @@ static inline void nextFrame(void) {
 				  workingBitsLeft=8;
 				  
 			  }
-
-			  if (brightnessBitsLeft>0) { //are we currently reading brightness? Consume as many bits as we can (if too few) or as we need (if too manY) from workingbyte into brightness
-				  
+			  
+			  byte workingBit = (workingByte & 0x01);
+			  
+			  if (brightnessBitsLeft>0) { //are we currently reading brightness? Consume as many bits as we can (if too few) or as we need (if too manY) from working byte into brightness
+				  				  
 				  workingBrightness <<=1;
-				  workingBrightness |= (workingByte & 0x01);
+				  workingBrightness |= workingBit;
 				  
 				  brightnessBitsLeft--;
 				  
-				  if (brightnessBitsLeft==0) {
+				  if (brightnessBitsLeft==0) {		// We've gotten enough bits to assign the next pixel!
 
-					  
 					  fda[--fdaIndex] = getDutyCycle(workingBrightness);
 					  
 				  }
-				  
-				  } else {
-				  
-				  if ( (workingByte & 0x01) ==  0x00 ) {		// 0 bit indicates that this pixel has not changed
+					  				  
+			  } else { // We are not currently reading in a pending brightness value 
+					  				  
+				  if ( workingBit ==  0x00 ) {		// 0 bit indicates that this pixel has not changed
 					  
 					  --fdaIndex;								// So skip it
 					  
-					  } else {
+				  } else {							// Start reading in the following bits as a brightness value
 					  
 					  brightnessBitsLeft = BRIGHTNESSBITS;					// Now we will read in the brightness value on next loops though
 					  workingBrightness = 0;
@@ -216,13 +249,11 @@ static inline void nextFrame(void) {
 				  
 			  }
 			  
-			  workingByte >>=1;
+			  workingByte >>=1;				
 			  workingBitsLeft--;
 			  
 		  } while ( fdaIndex > 0 );
-		  
-		  
-		  
+		  		  
 		  #ifdef TIMECHECK
 			 PORTA  &= ~_BV(1);
 		  #endif
@@ -338,12 +369,17 @@ static inline void refreshScreen(void)
 					
 				asm volatile (
 				
-					"OUT %0,%1 \n\t"			// DO DDRD first becuase in current config it will never actuallt turn the LED on
+					// TODO: Do actual visual test to make sure that actual brightness is linear and smooth with this algorthim 
+					//       Might not be because this does not take into account delay of loop branching. It would take at least 5 lines of 
+					//		 code to get this timing exactly right by special casing out b=1 and b=2, and then dividing higher numbers to account for the branch cost
+					//	     would be better to have this already accounted into the precomputed brightness->dutycycle map. 
+				
+					"OUT %0,%1 \n\t"			// DO DDRD first because in current config it will never actually have both pins so LED can't turn on (not turn of DDRB)
 					"OUT %2,%3 \n\t"			// Ok, LED is on now!
 					"L_%=:dec %4 \n\t"
 					"BRNE L_%= \n\t"
-					"OUT %2,__zero_reg__ \n\t"			// Do DDRB first since this will definitely turn off the LED (R1 always equals 0)
-					"OUT %0,R1 \n\t"
+					"OUT %2,__zero_reg__ \n\t"			// Do DDRB first since this will definitely turn off the LED 
+					"OUT %0,__zero_reg__ \n\t"
 					
 					: :  "I" (_SFR_IO_ADDR(DDRD)) , "r" (ddrdt) , "I" (_SFR_IO_ADDR(DDRB)) , "r" (ddrbt) , "r" (b) 
 					
@@ -448,11 +484,16 @@ void  __attribute__ ((naked)) warmstart(void) {
 	
 	// Note that we do not have to set WDTCR because the default timeout is initialized to 16ms after a reset (which is now). This is ~60Hrz display refresh rate.
 	
-	CLKPR = _BV(CLKPCE);				// Enable changes to the clock prescaler
-	CLKPR = 0;							// Set prescaler to 1, we will run full speed						
-										// TODO: Check if running full speed uses more power than doing same work longer at half speed
-										// TODO: For production version, set the prescaler with FUSE bits so we don't need this line
-										// TODO: For production version, set the clock speed with FUSE bits
+	
+	#ifndef PRODUCTION						// In produciton build, the FUSE will already have us start at full speed
+	
+		CLKPR = _BV(CLKPCE);				// Enable changes to the clock prescaler
+		CLKPR = 0;							// Set prescaler to 1, we will run full speed						
+											// TODO: Check if running full speed uses more power than doing same work longer at half speed
+
+	#endif
+
+
 	
 	// Now do whatever the user wants...
 	
@@ -464,12 +505,7 @@ void  __attribute__ ((naked)) warmstart(void) {
 		
 	
 	MCUCR = _BV( SE ) |	_BV(SM1 ) | _BV(SM0);		// Sleep enable (makes sleep instruction work), and sets sleep mode to "Power Down" (the deepest sleep)
-	
-	
-	//TODO: THis just lets us turn off watchdog so we can grab the chip via the debugger...
-	//DDRA = 0x02;
-	
-	
+		
 	asm("sleep");
 	
 	// we should never get here

@@ -337,12 +337,16 @@ static inline void refreshScreenClean(void)
 
 				} else {      // row goes low, cols go high....
 
-					PORTB = portBColBits[int_x];
-					PORTD = portDColBits[int_x];
-
-					ddrbt  = PORTB | portBRowBitsCache;               // enable output for the col pins to drive high, also enable output for row pins which are zero so will go low
+					byte portBColBitsCache = portBColBits[int_x];
 					
-					ddrdt  = PORTD | portDRowBitsCache;
+					PORTB = portBColBitsCache;
+					ddrbt  = portBColBitsCache | portBRowBitsCache;               // enable output for the col pins to drive high, also enable output for row pins which are zero so will go low
+					
+					
+					byte portDColBitsCache = portDColBits[int_x];
+					
+					PORTD = portDColBitsCache;					
+					ddrdt  = portDColBitsCache | portDRowBitsCache;
 					
 				}
 				

@@ -180,9 +180,7 @@ static inline void nextFrame(void) {
 		  // Time to display the next frame in the animation...
 		  // copy the next frame from program memory (candel_bitstream[]) to the RAM frame buffer (fda[])
 		  
-		  
-		  
-		  
+		  		  
 		  static byte const *candleBitstremPtr;     // next byte to read from the bitstream in program memory
 
 		  static byte workingByte;			  // current working byte
@@ -267,54 +265,55 @@ static inline void nextFrame(void) {
 
 static byte const rowDirectionBits = 0b01010101;      // 0=row goes low, 1=Row goes high
 
-static byte const portBRowBits[ROWS]  = {_BV(0),_BV(0),_BV(2),_BV(2),_BV(4),_BV(4),_BV(6),_BV(6) };
+PROGMEM static byte const portBRowBits[ROWS]  = {_BV(0),_BV(0),_BV(2),_BV(2),_BV(4),_BV(4),_BV(6),_BV(6) };
+PROGMEM static byte const portDRowBits[ROWS]  = {     0,     0,     0,     0,     0,     0,     0,     0 };
 	
-#ifndef ALL_PORTD_ROWS_ZERO
-	static byte const portDRowBits[ROWS]  = {     0,     0,     0,     0,     0,     0,     0,     0 };
-#endif
-
 // Note that col is always opposite of row so we don't need colDirectionBits
 
-static byte const portBColBits[COLS] = {_BV(7),_BV(5),_BV(3), _BV(1),     0};
-static byte const portDColBits[COLS] = {     0,     0,      0,     0,_BV(6)};
+PROGMEM static byte const portBColBits[COLS] = {_BV(7),_BV(5),_BV(3), _BV(1),     0};
+PROGMEM static byte const portDColBits[COLS] = {     0,     0,      0,     0,_BV(6)};
 
 
 #define REFRESH_PER_FRAME ( REFRESH_RATE / FRAME_RATE )		// How many refreshes before we trigger the next frame to be drawn?
 
 byte refreshCount =REFRESH_PER_FRAME+1;
 
+
+
+
 // Do a single full screen refresh
 // call nextframe() to decode next frame into buffer afterwards if it is time
+// This version will work with any combination of row/col bits
 
-static inline void refreshScreen(void) 
+
+
+static inline void refreshScreenClean(void)
 {
 	
-	#ifdef TIMECHECK    
+	#ifdef TIMECHECK
 		DDRA = _BV(0)|_BV(1);		// Set PORTA0 for output. Use OR because it compiles to single SBI instruction
 		PORTA |=_BV(0);				// twiddle A0 bit for oscilloscope timing
 	#endif
- 
+	
 	byte *fdaptr = fda;		 // Where are we in scanning through the FDA?
 	
 	byte rowDirectionBitsRotating = rowDirectionBits;	// Working space for rowDirections bits that we shift down once for each row
-														// Bit 0 will be bit for the current row. 
-														// TODO: in ASM, would could shift though the carry flag and jmp based on that and save a bit test
+	// Bit 0 will be bit for the current row.
+	// TODO: in ASM, would could shift though the carry flag and jmp based on that and save a bit test
 	
- 
+	
 	for( byte int_y = 0 ; int_y < FDA_Y_MAX ; int_y++ ) {
 
-		byte portBRowBitsCache = portBRowBits[int_y];	
+		byte portBRowBitsCache = pgm_read_byte_near(portBRowBits+int_y);
 		
-		#ifndef ALL_PORTD_ROWS_ZERO			
-			byte portDRowBitsCache = portDRowBits[int_y];
-		#endif
-				
+		byte portDRowBitsCache = pgm_read_byte_near(portDRowBits+int_y);
+		
 		for( byte int_x = 0 ; int_x < FDA_X_MAX ; int_x++) {
-  
+			
 			// get the brightness of the current LED
 
 			register byte b = *( fdaptr++ );		// Want this in a register because later we will loop on it and want the loop entrance to be quick
-  
+			
 			// If the LED is off, then don't need to do anything since all LEDs are already off all the time except for a split second inside this routine....
 
 			if (b>0) {
@@ -328,90 +327,80 @@ static inline void refreshScreen(void)
 					
 					PORTB = portBRowBitsCache;
 					
-					#ifndef ALL_PORTD_ROWS_ZERO
-						PORTD = portDRowBitsCache;		
-					#else	
-						PORTD = 0;		
-					#endif
+					PORTD = portDRowBitsCache;
 
 					// Only need to set the correct bits in PORTB and PORTD to drive the row high (col bit will get set to 0)
 
-					ddrbt  = portBRowBitsCache | portBColBits[int_x] ;       // enable output for the Row pins to drive high, also enable output for col pins which are zero so will go low
-										
-					#ifndef ALL_PORTD_ROWS_ZERO
-						ddrdt  = portDRowBitsCache | portDColBits[int_x] ;
-					#else
-						ddrdt = portDColBits[int_x];
-					#endif
+					ddrbt  = portBRowBitsCache | pgm_read_byte_near(portBColBits+int_x) ;       // enable output for the Row pins to drive high, also enable output for col pins which are zero so will go low
+					
+					ddrdt  = portDRowBitsCache | pgm_read_byte_near(portDColBits+int_x) ;
 
 				} else {      // row goes low, cols go high....
 
-					PORTB = portBColBits[int_x];
-					PORTD = portDColBits[int_x];
+					PORTB = pgm_read_byte_near(portBColBits+int_x);
+					PORTD = pgm_read_byte_near(portDColBits+int_x);
 
 					ddrbt  = PORTB | portBRowBitsCache;               // enable output for the col pins to drive high, also enable output for row pins which are zero so will go low
 					
-					#ifndef ALL_PORTD_ROWS_ZERO
-						ddrdt  = PORTD | portDRowBitsCache;
-					#else
-						ddrdt  = PORTD;
-					#endif
-		  
+					ddrdt  = PORTD | portDRowBitsCache;
+					
 				}
 				
-				// Now comes the business of Actually turning on the LED. 
-																													
-				// This is the tightest loop possible - I can't figure out how to do it in C	
-					
+				// Now comes the business of Actually turning on the LED.
+				
+				// This is the tightest loop possible - I can't figure out how to do it in C
+				
 				//while (b--) asm volatile ("");		//does not work because it generates a strange RJMP +0 loop preamble
 
 				//_delay_loop_1( b );					// DOes not work becuase it pathalogically loads b into a register
-					
+				
+								
 				asm volatile (
 				
-					// TODO: Do actual visual test to make sure that actual brightness is linear and smooth with this algorthim 
-					//       Might not be because this does not take into account delay of loop branching. It would take at least 5 lines of 
-					//		 code to get this timing exactly right by special casing out b=1 and b=2, and then dividing higher numbers to account for the branch cost
-					//	     would be better to have this already accounted into the precomputed brightness->dutycycle map. 
+				// TODO: Do actual visual test to make sure that actual brightness is linear and smooth with this algorthim
+				//       Might not be because this does not take into account delay of loop branching. It would take at least 5 lines of
+				//		 code to get this timing exactly right by special casing out b=1 and b=2, and then dividing higher numbers to account for the branch cost
+				//	     would be better to have this already accounted into the precomputed brightness->dutycycle map.
 				
-					"OUT %0,%1 \n\t"			// DO DDRD first because in current config it will never actually have both pins so LED can't turn on (not turn of DDRB)
-					"OUT %2,%3 \n\t"			// Ok, LED is on now!
-					"L_%=:dec %4 \n\t"
-					"BRNE L_%= \n\t"
-					"OUT %2,__zero_reg__ \n\t"			// Do DDRB first since this will definitely turn off the LED 
-					"OUT %0,__zero_reg__ \n\t"
-					
-					: :  "I" (_SFR_IO_ADDR(DDRD)) , "r" (ddrdt) , "I" (_SFR_IO_ADDR(DDRB)) , "r" (ddrbt) , "r" (b) 
-					
+				"OUT %0,%1 \n\t"			// DO DDRD first because in current config it will never actually have both pins so LED can't turn on (not turn of DDRB)
+				"OUT %2,%3 \n\t"			// Ok, LED is on now!
+				"L_%=:dec %4 \n\t"
+//				"BRNE L_%= \n\t"
+				"OUT %2,__zero_reg__ \n\t"			// Do DDRB first since this will definitely turn off the LED
+				"OUT %0,__zero_reg__ \n\t"
+				
+				: :  "I" (_SFR_IO_ADDR(DDRD)) , "r" (ddrdt) , "I" (_SFR_IO_ADDR(DDRB)) , "r" (ddrbt) , "r" (b)
+				
 				);
 
 			}
-		  
+			
 		}
 		
 		rowDirectionBitsRotating >>= 1;		// Shift bits down so bit 0 has the value for the next row
-	
+		
 	}
 	
 	#ifdef TIMECHECK
 		PORTA &= ~_BV(0);
 	#endif
 	
-	 
+	
 	refreshCount--;
-	  			  
+	
 	if (refreshCount == 0 ) {			// step to next frame in the animation sequence?
 		
-	  refreshCount=REFRESH_PER_FRAME+1;
-	  
-	  // TODO: this diagnostic screen generator costs 42 bytes. Can we make it smaller or just get rid of it?
-	  
-	  nextFrame();
-	  
+		refreshCount=REFRESH_PER_FRAME+1;
+		
+		// TODO: this diagnostic screen generator costs 42 bytes. Can we make it smaller or just get rid of it?
+		
+		nextFrame();
+		
 	}
-	  
-             
+	
+	
 }
+
 
 
 void init0 (void) __attribute__ ((naked)) __attribute__ ((section (".init0")));
@@ -473,7 +462,7 @@ int main(void)
 
 static inline void userWakeRoutine(void) {
 		
-	refreshScreen();
+	refreshScreenClean();
 	
 }
 

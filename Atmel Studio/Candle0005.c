@@ -265,13 +265,13 @@ static inline void nextFrame(void) {
 
 static byte const rowDirectionBits = 0b01010101;      // 0=row goes low, 1=Row goes high
 
-PROGMEM static byte const portBRowBits[ROWS]  = {_BV(0),_BV(0),_BV(2),_BV(2),_BV(4),_BV(4),_BV(6),_BV(6) };
-PROGMEM static byte const portDRowBits[ROWS]  = {     0,     0,     0,     0,     0,     0,     0,     0 };
+static byte const portBRowBits[ROWS]  = {_BV(0),_BV(0),_BV(2),_BV(2),_BV(4),_BV(4),_BV(6),_BV(6) };
+static byte const portDRowBits[ROWS]  = {     0,     0,     0,     0,     0,     0,     0,     0 };
 	
 // Note that col is always opposite of row so we don't need colDirectionBits
 
-PROGMEM static byte const portBColBits[COLS] = {_BV(7),_BV(5),_BV(3), _BV(1),     0};
-PROGMEM static byte const portDColBits[COLS] = {     0,     0,      0,     0,_BV(6)};
+static byte const portBColBits[COLS] = {_BV(7),_BV(5),_BV(3), _BV(1),     0};
+static byte const portDColBits[COLS] = {     0,     0,      0,     0,_BV(6)};
 
 
 #define REFRESH_PER_FRAME ( REFRESH_RATE / FRAME_RATE )		// How many refreshes before we trigger the next frame to be drawn?
@@ -304,9 +304,9 @@ static inline void refreshScreenClean(void)
 	
 	for( byte int_y = 0 ; int_y < FDA_Y_MAX ; int_y++ ) {
 
-		byte portBRowBitsCache = pgm_read_byte_near(portBRowBits+int_y);
+		byte portBRowBitsCache = portBRowBits[int_y];
 		
-		byte portDRowBitsCache = pgm_read_byte_near(portDRowBits+int_y);
+		byte portDRowBitsCache = portDRowBits[int_y];
 		
 		for( byte int_x = 0 ; int_x < FDA_X_MAX ; int_x++) {
 			
@@ -331,14 +331,14 @@ static inline void refreshScreenClean(void)
 
 					// Only need to set the correct bits in PORTB and PORTD to drive the row high (col bit will get set to 0)
 
-					ddrbt  = portBRowBitsCache | pgm_read_byte_near(portBColBits+int_x) ;       // enable output for the Row pins to drive high, also enable output for col pins which are zero so will go low
+					ddrbt  = portBRowBitsCache | portBColBits[int_x] ;       // enable output for the Row pins to drive high, also enable output for col pins which are zero so will go low
 					
-					ddrdt  = portDRowBitsCache | pgm_read_byte_near(portDColBits+int_x) ;
+					ddrdt  = portDRowBitsCache | portDColBits[int_x] ;
 
 				} else {      // row goes low, cols go high....
 
-					PORTB = pgm_read_byte_near(portBColBits+int_x);
-					PORTD = pgm_read_byte_near(portDColBits+int_x);
+					PORTB = portBColBits[int_x];
+					PORTD = portDColBits[int_x];
 
 					ddrbt  = PORTB | portBRowBitsCache;               // enable output for the col pins to drive high, also enable output for row pins which are zero so will go low
 					
@@ -400,7 +400,6 @@ static inline void refreshScreenClean(void)
 	
 	
 }
-
 
 
 void init0 (void) __attribute__ ((naked)) __attribute__ ((section (".init0")));

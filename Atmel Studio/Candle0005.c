@@ -44,8 +44,6 @@
 
 //#define PRODUCTION				// Production burn?
 
-
-
 #ifdef PRODUCTION
 
 	FUSES = {
@@ -133,6 +131,8 @@ static inline void nextFrame(void) {
 	  #ifdef TIMECHECK
 		  PORTA |= _BV(1);
 	  #endif
+	  
+	  // TODO: this diagnostic screen generator costs 42 bytes. Can we make it smaller or just get rid of it?
 	  
 	  // TODO: For production version, probably take out brightness test but first make sure 5 bits is really visible. 
 		
@@ -299,12 +299,12 @@ static inline void refreshScreenClean(void)
 	// Bit 0 will be bit for the current row.
 	// TODO: in ASM, would could shift though the carry flag and jmp based on that and save a bit test
 	
-	for( byte int_y = 0 ; int_y < FDA_Y_MAX ; int_y++ ) {
+	for( byte y = 0 ; y < FDA_Y_MAX ; y++ ) {
 
-		byte portBRowBitsCache = portBRowBits[int_y]; // *(precomputedpins++);
-		byte portDRowBitsCache = portBRowBits[int_y]; // *(precomputedpins++);
+		byte portBRowBitsCache = portBRowBits[y]; 
+		byte portDRowBitsCache = portBRowBits[y]; 
 		
-		for( byte int_x = 0 ; int_x < FDA_X_MAX ; int_x++) {
+		for( byte x = 0 ; x < FDA_X_MAX ; x++) {
 			
 			// get the brightness of the current LED
 
@@ -312,11 +312,10 @@ static inline void refreshScreenClean(void)
 			
 			// If the LED is off, then don't need to do anything since all LEDs are already off all the time except for a split second inside this routine....
 
-
 			if (b>0) {
 				
-				byte portBColBitsCache = portBColBits[int_x]; //*(precomputedpins++);
-				byte portDColBitsCache = portDColBits[int_x]; //*(precomputedpins++);
+				byte portBColBitsCache = portBColBits[x]; 
+				byte portDColBitsCache = portDColBits[x]; 
 				
 				// Assume DDRB = DDRD = 0 coming into the INt since that is the Way we should have left them when we exited last...
 
@@ -351,10 +350,10 @@ static inline void refreshScreenClean(void)
 				
 				// This is the tightest loop possible - I can't figure out how to do it in C
 				
-				//while (b--) asm volatile ("");		//does not work because it generates a strange RJMP +0 loop preamble
+				// while (b--) asm volatile ("");		//does not work because it generates a strange RJMP +0 loop preamble
 
-				//_delay_loop_1( b );					// DOes not work becuase it pathalogically loads b into a register
-				
+				// _delay_loop_1( b );					// DOes not work becuase it pathalogically loads b into a register
+				 
 								
 				asm volatile (
 				
@@ -366,7 +365,7 @@ static inline void refreshScreenClean(void)
 				"OUT %0,%1 \n\t"			// DO DDRD first because in current config it will never actually have both pins so LED can't turn on (not turn of DDRB)
 				"OUT %2,%3 \n\t"			// Ok, LED is on now!
 				"L_%=:dec %4 \n\t"
-//				"BRNE L_%= \n\t"
+				"BRNE L_%= \n\t"
 				"OUT %2,__zero_reg__ \n\t"			// Do DDRB first since this will definitely turn off the LED
 				"OUT %0,__zero_reg__ \n\t"
 				
@@ -392,8 +391,8 @@ static inline void refreshScreenClean(void)
 		
 		refreshCount=REFRESH_PER_FRAME+1;
 		
-		// TODO: this diagnostic screen generator costs 42 bytes. Can we make it smaller or just get rid of it?
-		
+		// Update the display buffer with the next frame of animation
+				
 		nextFrame();
 		
 	}
@@ -414,6 +413,9 @@ void init0(void) {
 	
 	// On power up, This code will fall though to the normal .init seconds and set up all the variables and get ready for main() to start
 }
+
+// TODO: Make our own linker script and move warmstart here so we save one cycle on the RJMP, and instead take that hit only once with a jump to main() on powerup
+
 
 // Put any code you want to run once on power-up here....
 // Any global variables set in this routine will persist to the WatchDog routine
@@ -437,7 +439,6 @@ int main(void)
 	// The delay set here is actually just how long until the first watchdog reset so we will set it to the lowest value to get into cycyle as soon as possible
 	// Once in the cycle,  warmstart will set it to the desired running value each time.
 	
-	
 	// Note that we could save a tiny ammount of time if we RJMPed right into the warmstart() here, but that
 	// could introduce a little jitter since the timing would be different on the first pass. Better to
 	// always enter warmstart from exactly the same state for consistent timing.
@@ -452,12 +453,8 @@ int main(void)
 }
 
 
-// Put any code you want to run on every wake up here....
-// Any global variables used in this routine will persist
-// All I/O Registers are reset to thier initial values (per the datasheet) everytime we wake up
-// If you plan to do work for longer than the WatchDog timer, then you need to do a WatchDogReset (WDR) occasionally to keep the timer from expiring on you.
-
 // This is "static inline" so The code will just be inserted directly into the warmstart code avoiding overhead of a call/ret
+// Important that this function always finishes before WDT expires or it will get cut short
 
 static inline void userWakeRoutine(void) {
 		
@@ -480,8 +477,6 @@ void  __attribute__ ((naked)) warmstart(void) {
 											// TODO: Check if running full speed uses more power than doing same work longer at half speed
 
 	#endif
-
-
 	
 	// Now do whatever the user wants...
 	

@@ -48,7 +48,7 @@
 
 	FUSES = {
 	
-		.low = (FUSE_SUT1 & FUSE_SUT0 & FUSE_CKSEL3 & FUSE_CKSEL2 & FUSE_CKSEL0),			// Startup with clock/8, no startup delay, 8Mhz internal RC
+		.low = (FUSE_SUT1 & FUSE_SUT0 & FUSE_CKSEL3 & FUSE_CKSEL1 & FUSE_CKSEL0),			// Startup with clock/8, no startup delay, 8Mhz internal RC
 		.high =  HFUSE_DEFAULT,
 		.extended = EFUSE_DEFAULT
 	
@@ -58,7 +58,7 @@
 	
 	FUSES = {
 		
-		.low = (FUSE_CKDIV8 & FUSE_SUT1 & FUSE_SUT0 & FUSE_CKSEL3 & FUSE_CKSEL2 & FUSE_CKSEL0),			// Startup with clock/8, no startup delay, 8Mhz internal RC
+		.low = (FUSE_CKDIV8 & FUSE_SUT1 & FUSE_SUT0 & FUSE_CKSEL3 & FUSE_CKSEL1 & FUSE_CKSEL0),			// Startup with clock/8, no startup delay, 8Mhz internal RC
 		.high =  HFUSE_DEFAULT,
 		.extended = EFUSE_DEFAULT
 		
@@ -279,7 +279,7 @@ static byte const portDColBits[COLS] = {     0,     0,      0,     0,_BV(6)};
 byte refreshCount = REFRESH_PER_FRAME+1;
 
 
-// Do a single full screen refresh
+// Do a single full screen refresh     
 // call nextframe() to decode next frame into buffer afterwards if it is time
 // This version will work with any combination of row/col bits
 
@@ -353,28 +353,78 @@ static inline void refreshScreenClean(void)
 				// while (b--) asm volatile ("");		//does not work because it generates a strange RJMP +0 loop preamble
 
 				// _delay_loop_1( b );					// DOes not work becuase it pathalogically loads b into a register
-				 
-								
-				asm volatile (
-				
+
+
 				// TODO: Do actual visual test to make sure that actual brightness is linear and smooth with this algorthim
 				//       Might not be because this does not take into account delay of loop branching. It would take at least 5 lines of
 				//		 code to get this timing exactly right by special casing out b=1 and b=2, and then dividing higher numbers to account for the branch cost
 				//	     would be better to have this already accounted into the precomputed brightness->dutycycle map.
+				 
+				 
+				if (b==1) {		// Special case low values because loop overhead will mes sup on time...
+								
+					asm volatile (
+								
+						"OUT %0,%1 \n\t"				// DO DDRD first because in current config it will never actually have both pins so LED can't turn on (not turn of DDRB)
+						"OUT %2,%3 \n\t"				// Ok, LED is on now!
+						// No delay at all, will be off on next instruction
+						"OUT %2,__zero_reg__ \n\t"		// Do DDRB first since this will definitely turn off the LED
+						"OUT %0,__zero_reg__ \n\t"
 				
-				"OUT %0,%1 \n\t"			// DO DDRD first because in current config it will never actually have both pins so LED can't turn on (not turn of DDRB)
-				"OUT %2,%3 \n\t"			// Ok, LED is on now!
-				"L_%=:dec %4 \n\t"
-				"BRNE L_%= \n\t"
-				"OUT %2,__zero_reg__ \n\t"			// Do DDRB first since this will definitely turn off the LED
-				"OUT %0,__zero_reg__ \n\t"
+						: :  "I" (_SFR_IO_ADDR(DDRD)) , "r" (ddrdt) , "I" (_SFR_IO_ADDR(DDRB)) , "r" (ddrbt) 
 				
-				: :  "I" (_SFR_IO_ADDR(DDRD)) , "r" (ddrdt) , "I" (_SFR_IO_ADDR(DDRB)) , "r" (ddrbt) , "r" (b)
+					);
 				
-				);
+				} else if (b==2 && 0 ) {
 				
-			}
+					asm volatile (
+					
+						"OUT %0,%1 \n\t"			// DO DDRD first because in current config it will never actually have both pins so LED can't turn on (not turn of DDRB)
+						"OUT %2,%3 \n\t"			// Ok, LED is on now!
+						"NOP\n\t"
+						"OUT %2,__zero_reg__ \n\t"			// Do DDRB first since this will definitely turn off the LED
+						"OUT %0,__zero_reg__ \n\t"
+					
+						: :  "I" (_SFR_IO_ADDR(DDRD)) , "r" (ddrdt) , "I" (_SFR_IO_ADDR(DDRB)) , "r" (ddrbt)
+					
+					);
+				
+				} else if (b==3) {
 			
+					asm volatile (
+			
+						"OUT %0,%1 \n\t"			// DO DDRD first because in current config it will never actually have both pins so LED can't turn on (not turn of DDRB)
+						"OUT %2,%3 \n\t"			// Ok, LED is on now!
+						"NOP\n\t"
+						"NOP\n\t"
+						"OUT %2,__zero_reg__ \n\t"			// Do DDRB first since this will definitely turn off the LED
+						"OUT %0,__zero_reg__ \n\t"
+			
+						: :  "I" (_SFR_IO_ADDR(DDRD)) , "r" (ddrdt) , "I" (_SFR_IO_ADDR(DDRB)) , "r" (ddrbt) 
+			
+					);
+					
+				} else if (b>=4) {
+					
+				
+					b /= 2;		// Account for the fact that loop has overhead
+			
+					asm volatile (
+			
+						"OUT %0,%1 \n\t"			// DO DDRD first because in current config it will never actually have both pins so LED can't turn on (not turn of DDRB)
+						"OUT %2,%3 \n\t"			// Ok, LED is on now!
+						"L_%=:dec %4 \n\t"
+						"BRNE L_%= \n\t"
+						"OUT %2,__zero_reg__ \n\t"			// Do DDRB first since this will definitely turn off the LED
+						"OUT %0,__zero_reg__ \n\t"
+			
+						: :  "I" (_SFR_IO_ADDR(DDRD)) , "r" (ddrdt) , "I" (_SFR_IO_ADDR(DDRB)) , "r" (ddrbt) , "r" (b)
+			
+					);
+					
+				}
+		
+			} // b==0
 		}
 		
 		rowDirectionBitsRotating >>= 1;		// Shift bits down so bit 0 has the value for the next row

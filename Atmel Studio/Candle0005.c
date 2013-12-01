@@ -272,13 +272,11 @@ static byte const portDRowBits[ROWS]  = {     0,     0,     0,     0,     0,    
 
 static byte const portBColBits[COLS] = {_BV(7),_BV(5),_BV(3), _BV(1),     0};
 static byte const portDColBits[COLS] = {     0,     0,      0,     0,_BV(6)};
-
+	
 
 #define REFRESH_PER_FRAME ( REFRESH_RATE / FRAME_RATE )		// How many refreshes before we trigger the next frame to be drawn?
 
-byte refreshCount =REFRESH_PER_FRAME+1;
-
-
+byte refreshCount = REFRESH_PER_FRAME+1;
 
 
 // Do a single full screen refresh
@@ -301,12 +299,10 @@ static inline void refreshScreenClean(void)
 	// Bit 0 will be bit for the current row.
 	// TODO: in ASM, would could shift though the carry flag and jmp based on that and save a bit test
 	
-	
 	for( byte int_y = 0 ; int_y < FDA_Y_MAX ; int_y++ ) {
 
-		byte portBRowBitsCache = portBRowBits[int_y];
-		
-		byte portDRowBitsCache = portDRowBits[int_y];
+		byte portBRowBitsCache = portBRowBits[int_y]; // *(precomputedpins++);
+		byte portDRowBitsCache = portBRowBits[int_y]; // *(precomputedpins++);
 		
 		for( byte int_x = 0 ; int_x < FDA_X_MAX ; int_x++) {
 			
@@ -316,12 +312,17 @@ static inline void refreshScreenClean(void)
 			
 			// If the LED is off, then don't need to do anything since all LEDs are already off all the time except for a split second inside this routine....
 
-			if (b>0) {
 
+			if (b>0) {
+				
+				byte portBColBitsCache = portBColBits[int_x]; //*(precomputedpins++);
+				byte portDColBitsCache = portDColBits[int_x]; //*(precomputedpins++);
+				
 				// Assume DDRB = DDRD = 0 coming into the INt since that is the Way we should have left them when we exited last...
 
 				byte ddrbt;
 				byte ddrdt;
+
 
 				if ( rowDirectionBitsRotating & _BV(0) ) {    // lowest bit of the rotating bits is for this row. If bit=1 then row pin is high and col pins are low....
 					
@@ -331,19 +332,15 @@ static inline void refreshScreenClean(void)
 
 					// Only need to set the correct bits in PORTB and PORTD to drive the row high (col bit will get set to 0)
 
-					ddrbt  = portBRowBitsCache | portBColBits[int_x] ;       // enable output for the Row pins to drive high, also enable output for col pins which are zero so will go low
+					ddrbt  = portBRowBitsCache | portBColBitsCache ;       // enable output for the Row pins to drive high, also enable output for col pins which are zero so will go low
 					
-					ddrdt  = portDRowBitsCache | portDColBits[int_x] ;
+					ddrdt  = portDRowBitsCache | portDColBitsCache;
 
 				} else {      // row goes low, cols go high....
 
-					byte portBColBitsCache = portBColBits[int_x];
 					
 					PORTB = portBColBitsCache;
 					ddrbt  = portBColBitsCache | portBRowBitsCache;               // enable output for the col pins to drive high, also enable output for row pins which are zero so will go low
-					
-					
-					byte portDColBitsCache = portDColBits[int_x];
 					
 					PORTD = portDColBitsCache;					
 					ddrdt  = portDColBitsCache | portDRowBitsCache;
@@ -376,13 +373,12 @@ static inline void refreshScreenClean(void)
 				: :  "I" (_SFR_IO_ADDR(DDRD)) , "r" (ddrdt) , "I" (_SFR_IO_ADDR(DDRB)) , "r" (ddrbt) , "r" (b)
 				
 				);
-
+				
 			}
 			
 		}
 		
 		rowDirectionBitsRotating >>= 1;		// Shift bits down so bit 0 has the value for the next row
-		
 	}
 	
 	#ifdef TIMECHECK
@@ -435,7 +431,7 @@ static inline void userStartup(void) {
 
 int main(void)
 {
-		
+			
 	wdt_enable(WDTO_15MS);							// Could do this slightly more efficiently in ASM, but we only do it one time- when we first power up
 	
 	// The delay set here is actually just how long until the first watchdog reset so we will set it to the lowest value to get into cycyle as soon as possible

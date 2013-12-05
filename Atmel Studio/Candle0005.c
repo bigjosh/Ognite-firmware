@@ -132,6 +132,24 @@ static inline void nextFrame(void) {
 		  PORTA |= _BV(1);
 	  #endif
 	  
+	  
+	  if (0) {
+		  
+  				byte fdaptr = 0;
+
+		  
+				for(byte b=0;b<(_BV(BRIGHTNESSBITS));b++){
+					
+					byte d = getDutyCycle( b);				// normalize step variable to always cycle within brightness range
+					
+					fda[fdaptr++] = d;
+					
+				}
+				
+		return;				
+		  
+	  }
+	  
 	  // TODO: this diagnostic screen generator costs 42 bytes. Can we make it smaller or just get rid of it?
 	  
 	  // TODO: For production version, probably take out brightness test but first make sure 5 bits is really visible. 
@@ -361,13 +379,14 @@ static inline void refreshScreenClean(void)
 				//	     would be better to have this already accounted into the precomputed brightness->dutycycle map.
 				 
 				 
-				if (b==1) {		// Special case low values because loop overhead will mes sup on time...
+				 
+				if (b==1) {		// Special case 1 because loop overhead will mes sup on time...
 								
 					asm volatile (
 								
 						"OUT %0,%1 \n\t"				// DO DDRD first because in current config it will never actually have both pins so LED can't turn on (not turn of DDRB)
 						"OUT %2,%3 \n\t"				// Ok, LED is on now!
-						// No delay at all, will be off on next instruction
+						"NOP\n\t"						// No delay at all, will be off on next instruction
 						"OUT %2,__zero_reg__ \n\t"		// Do DDRB first since this will definitely turn off the LED
 						"OUT %0,__zero_reg__ \n\t"
 				
@@ -375,53 +394,77 @@ static inline void refreshScreenClean(void)
 				
 					);
 				
-				} else if (b==2 && 0 ) {
-				
-					asm volatile (
+				} else {
 					
-						"OUT %0,%1 \n\t"			// DO DDRD first because in current config it will never actually have both pins so LED can't turn on (not turn of DDRB)
-						"OUT %2,%3 \n\t"			// Ok, LED is on now!
-						"NOP\n\t"
-						"OUT %2,__zero_reg__ \n\t"			// Do DDRB first since this will definitely turn off the LED
-						"OUT %0,__zero_reg__ \n\t"
 					
-						: :  "I" (_SFR_IO_ADDR(DDRD)) , "r" (ddrdt) , "I" (_SFR_IO_ADDR(DDRB)) , "r" (ddrbt)
+					// loop timing here b==1 -> 1+1=2 cycles, b=2 -> 1+2+1+1 =5 cycles, b=3 ->  (1+2)+(1+2)+(1+1)
 					
-					);
-				
-				} else if (b==3) {
-			
-					asm volatile (
-			
-						"OUT %0,%1 \n\t"			// DO DDRD first because in current config it will never actually have both pins so LED can't turn on (not turn of DDRB)
-						"OUT %2,%3 \n\t"			// Ok, LED is on now!
-						"NOP\n\t"
-						"NOP\n\t"
-						"OUT %2,__zero_reg__ \n\t"			// Do DDRB first since this will definitely turn off the LED
-						"OUT %0,__zero_reg__ \n\t"
-			
-						: :  "I" (_SFR_IO_ADDR(DDRD)) , "r" (ddrdt) , "I" (_SFR_IO_ADDR(DDRB)) , "r" (ddrbt) 
-			
-					);
+					// C is loop count
+					// General case for c>0, delay = (c*3)-1
+					// So c= (b+1)/3
 					
-				} else if (b>=4) {
+					byte loopcount = (b+1)/3;
+					byte remander = b - ((loopcount*3) -1 );
 					
-				
-					b /= 2;		// Account for the fact that loop has overhead
-			
-					asm volatile (
-			
-						"OUT %0,%1 \n\t"			// DO DDRD first because in current config it will never actually have both pins so LED can't turn on (not turn of DDRB)
-						"OUT %2,%3 \n\t"			// Ok, LED is on now!
-						"L_%=:dec %4 \n\t"
-						"BRNE L_%= \n\t"
-						"OUT %2,__zero_reg__ \n\t"			// Do DDRB first since this will definitely turn off the LED
-						"OUT %0,__zero_reg__ \n\t"
-			
-						: :  "I" (_SFR_IO_ADDR(DDRD)) , "r" (ddrdt) , "I" (_SFR_IO_ADDR(DDRB)) , "r" (ddrbt) , "r" (b)
-			
-					);
-					
+					switch (remander) {
+						
+						case 0:		// No remainder, so just loop and we will get right delay
+						
+							asm volatile (
+							
+								"OUT %0,%1 \n\t"			// DO DDRD first because in current config it will never actually have both pins so LED can't turn on (not turn of DDRB)
+								"OUT %2,%3 \n\t"			// Ok, LED is on now!
+								"L_%=:dec %4 \n\t"			// 1 cycle
+								"BRNE L_%= \n\t"			// 1 on false, 2 on true cycles
+								"OUT %2,__zero_reg__ \n\t"			// Do DDRB first since this will definitely turn off the LED
+								"OUT %0,__zero_reg__ \n\t"
+						
+								: :  "I" (_SFR_IO_ADDR(DDRD)) , "r" (ddrdt) , "I" (_SFR_IO_ADDR(DDRB)) , "r" (ddrbt) , "r" (b)
+										
+							);
+							
+							break;
+						
+						case 1:  // We need 1 extra cycle to come out with the right delay
+						
+							asm volatile (
+							
+								"OUT %0,%1 \n\t"			// DO DDRD first because in current config it will never actually have both pins so LED can't turn on (not turn of DDRB)
+								"OUT %2,%3 \n\t"			// Ok, LED is on now!
+								"NOP\n\t"					// drag our feet one cycle
+								"L_%=:dec %4 \n\t"			// 1 cycle
+								"BRNE L_%= \n\t"			// 1 on false, 2 on true cycles
+								"OUT %2,__zero_reg__ \n\t"			// Do DDRB first since this will definitely turn off the LED
+								"OUT %0,__zero_reg__ \n\t"
+							
+								: :  "I" (_SFR_IO_ADDR(DDRD)) , "r" (ddrdt) , "I" (_SFR_IO_ADDR(DDRB)) , "r" (ddrbt) , "r" (b)
+							
+							);
+							
+							break;
+						
+												
+						case 2:  // We need 2 extra cycles to come out with the right delay
+						
+							asm volatile (
+						
+								"OUT %0,%1 \n\t"			// DO DDRD first because in current config it will never actually have both pins so LED can't turn on (not turn of DDRB)
+								"OUT %2,%3 \n\t"			// Ok, LED is on now!
+								"NOP\n\t"					// drag our feet 2 cycles
+								"NOP\n\t"					
+								"L_%=:dec %4 \n\t"			// 1 cycle
+								"BRNE L_%= \n\t"			// 1 on false, 2 on true cycles
+								"OUT %2,__zero_reg__ \n\t"			// Do DDRB first since this will definitely turn off the LED
+								"OUT %0,__zero_reg__ \n\t"
+						
+								: :  "I" (_SFR_IO_ADDR(DDRD)) , "r" (ddrdt) , "I" (_SFR_IO_ADDR(DDRB)) , "r" (ddrbt) , "r" (b)
+						
+							);
+						
+							break;
+							
+					}
+									
 				}
 		
 			} // b==0
@@ -466,19 +509,6 @@ void init0(void) {
 
 // TODO: Make our own linker script and move warmstart here so we save one cycle on the RJMP, and instead take that hit only once with a jump to main() on powerup
 
-
-// Put any code you want to run once on power-up here....
-// Any global variables set in this routine will persist to the WatchDog routine
-// Note that I/O registers are initialized on every WatchDog reset the need to be updated inside userWakeRountine()
-
-// This is "static inline" so The code will just be inserted directly into the main() code avoiding overhead of a call/ret
-
-static inline void userStartup(void) {
-
-	// Your start-up code here....
-	
-}
-
 // Main() only gets run once, when we first power up
 
 int main(void)
@@ -520,7 +550,7 @@ void  __attribute__ ((naked)) warmstart(void) {
 	// Note that we do not have to set WDTCR because the default timeout is initialized to 16ms after a reset (which is now). This is ~60Hrz display refresh rate.
 	
 	
-	#ifndef PRODUCTION						// In produciton build, the FUSE will already have us start at full speed
+	#ifndef PRODUCTION						// In production build, the FUSE will already have us start at full speed
 	
 		CLKPR = _BV(CLKPCE);				// Enable changes to the clock prescaler
 		CLKPR = 0;							// Set prescaler to 1, we will run full speed						

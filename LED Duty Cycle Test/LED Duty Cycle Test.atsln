@@ -1,0 +1,20 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 11.00
+# Atmel Studio Solution File, Format Version 11.00
+Project("{54F91283-7BC4-4236-8FF9-10F437C3AD48}") = "LED Duty Cycle Test", "LED Duty Cycle Test.cproj", "{268E945E-AA47-4889-B1E7-FA63C607145E}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|AVR = Debug|AVR
+		Release|AVR = Release|AVR
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{268E945E-AA47-4889-B1E7-FA63C607145E}.Debug|AVR.ActiveCfg = Debug|AVR
+		{268E945E-AA47-4889-B1E7-FA63C607145E}.Debug|AVR.Build.0 = Debug|AVR
+		{268E945E-AA47-4889-B1E7-FA63C607145E}.Release|AVR.ActiveCfg = Release|AVR
+		{268E945E-AA47-4889-B1E7-FA63C607145E}.Release|AVR.Build.0 = Release|AVR
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

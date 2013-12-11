@@ -297,11 +297,156 @@ static byte const portDColBits[COLS] = {     0,     0,      0,     0,_BV(6)};
 byte refreshCount = REFRESH_PER_FRAME+1;
 
 
+
+#define LED_DUTY_CYCLE_PORT (DDRB)			// This is the port we use for actually timing the LEDs on time
+											// We use PORTB rather than PORTD because in the current LED layout, setting DDRB=0 will always turn off all LEDs
+
+
+// Set (ledonbits) to (LED_DUTY_CYCLE_PORT) for precisely (cycles) CPU cycles, then send a zero to the port
+
+static inline void ledDutyCycle(unsigned char cycles , byte ledonbits )
+{
+	
+	switch (cycles) {
+		
+		
+		/*
+		// Note: we don't need a zero case here because we pre-cut the zeros when computing the port values.
+		
+		case 0:
+			break;
+		
+		*/		
+		
+		case 1:	{	// Special case 1 because loop overhead will mess up on time...
+			
+			__asm__ __volatile__ (
+			"OUT %0,%1 \n\t"				// DO OUTPORT first because in current config it will never actually have both pins so LED can't turn on (not turn of DDRB)
+			"OUT %0,__zero_reg__ \n\t"
+			
+			: :  "I" (_SFR_IO_ADDR(LED_DUTY_CYCLE_PORT)) , "r" (ledonbits)
+			
+			);
+		}
+		break;
+		
+		case 2: {
+			
+			__asm__ __volatile__ (
+			"OUT %0,%1 \n\t"				// DO OUTPORT first because in current config it will never actually have both pins so LED can't turn on (not turn of DDRB)
+			"NOP \n\t"		// waste one cycle that will (hopefully) not get optimized out
+			"OUT %0,__zero_reg__ \n\t"
+			
+			: :  "I" (_SFR_IO_ADDR(LED_DUTY_CYCLE_PORT)) , "r" (ledonbits)
+			
+			);
+		}
+		break;
+		
+		default: {
+			
+			// Loop delay for loop counter c:
+			
+			
+			// --When c==1---
+			//	loop:   DEC c		// 1 cycle  (c=0)
+			//	BRNE loop			// 1 cycle
+			//                      // =============
+			//                      // 2 cycles total
+
+
+			// --When c==2---
+			//	loop:   DEC c		// 1 cycle	(c=1)
+			//	BRNE loop			// 2 cycles (branch taken)
+			//	loop:   DEC c		// 1 cycle	(c=0)
+			//	BRNE loop			// 1 cycles (branch not taken)
+			//                      // =============
+			//                      // 5 cycles total
+
+			
+			
+			// if c==1 then delay=2 cycles (branch not taken at all)
+			// if c==2 then delay=5 (2+3) cycles
+			// if c==3 then delay=8 (2+3+3)
+			
+			// ...so loop overhead is always 2+(c-1)*3 cycles
+			
+			// Include the single cycle overhead for the trailing OUT after the loop and we get...
+			
+			// delay = 3+(c-1)*3
+			// delay = 3+(3*c)-3
+			// delay = (3*c)
+			// delay/3 = c
+			
+			byte loopcounter = cycles/ (byte) 3;		// TODO: either do faster bit compute here, or store dividends and remainder in lookup
+			
+			byte remainder = cycles - (loopcounter*3);			// THis is how many cycles we need to pick up the slack to make up for the granularity of the loop
+			
+			switch (remainder) {
+				
+				case 0:		{// No remainder, so just loop and we will get right delay
+					
+					__asm__ __volatile__ (
+					"OUT %[port],%[bits] \n\t"			// DO OUTPORT first because in current config it will never actually have both pins so LED can't turn on (not turn of DDRB)
+					"L_%=:dec %[loop]\n\t"			// 1 cycle
+					"BRNE L_%= \n\t"			// 1 on false, 2 on true cycles
+					"OUT %[port],__zero_reg__ \n\t"
+					
+					: [loop] "=r" (loopcounter) : [port] "I" (_SFR_IO_ADDR(LED_DUTY_CYCLE_PORT)) , [bits] "r" (ledonbits) , "0" (loopcounter)
+					
+					);
+				}
+				break;
+				
+				case 1:  {// We need 1 extra cycle to come out with the right delay
+					
+					__asm__ __volatile__ (
+					"OUT %[port],%[bits] \n\t"			// DO OUTPORT first because in current config it will never actually have both pins so LED can't turn on (not turn of DDRB)
+					"NOP \n\t"		// waste one cycle that will (hopefully) not get optimized out
+					"L_%=:dec %[loop] \n\t"			// 1 cycle
+					"BRNE L_%= \n\t"			// 1 on false, 2 on true cycles
+					"OUT %[port],__zero_reg__ \n\t"
+					
+					: [loop] "=r" (loopcounter) : [port] "I" (_SFR_IO_ADDR(LED_DUTY_CYCLE_PORT)) , [bits] "r" (ledonbits) , "0" (loopcounter)
+					
+					);
+				}
+				break;
+				
+				
+				case 2:  { // We need 2 extra cycles to come out with the right delay
+					
+					__asm__ __volatile__ (
+					
+					"OUT %[port],%[bits] \n\t"			// DO OUTPORT first because in current config it will never actually have both pins so LED can't turn on (not turn of DDRB)
+					"RJMP L_%=\n\t"					// Waste 2 cycles using half as much space as 2 NOPs
+					"L_%=:dec %[loop] \n\t"			// 1 cycle
+					"BRNE L_%= \n\t"			// 1 on false, 2 on true cycles
+					"OUT %[port],__zero_reg__ \n\t"
+					
+					: [loop] "=r" (loopcounter) : [port] "I" (_SFR_IO_ADDR(LED_DUTY_CYCLE_PORT)) , [bits] "r" (ledonbits) , "0" (loopcounter)
+					
+					);
+				}
+				
+				break;
+				
+			} // switch (remainder)
+			
+		}	// default case where b>2
+		
+		break;
+		
+	}	// switch (b)
+	
+}
+
+
+
+
 // Do a single full screen refresh     
 // call nextframe() to decode next frame into buffer afterwards if it is time
 // This version will work with any combination of row/col bits
-
-
 
 static inline void refreshScreenClean(void)
 {
@@ -364,110 +509,10 @@ static inline void refreshScreenClean(void)
 					
 				}
 				
-				// Now comes the business of Actually turning on the LED.
-				
-				// This is the tightest loop possible - I can't figure out how to do it in C
-				
-				// while (b--) asm volatile ("");		//does not work because it generates a strange RJMP +0 loop preamble
-
-				// _delay_loop_1( b );					// DOes not work becuase it pathalogically loads b into a register
-
-
-				// TODO: Do actual visual test to make sure that actual brightness is linear and smooth with this algorthim
-				//       Might not be because this does not take into account delay of loop branching. It would take at least 5 lines of
-				//		 code to get this timing exactly right by special casing out b=1 and b=2, and then dividing higher numbers to account for the branch cost
-				//	     would be better to have this already accounted into the precomputed brightness->dutycycle map.
-				 
-				 
-				 
-				if (b==1) {		// Special case 1 because loop overhead will mes sup on time...
-								
-					asm volatile (
-								
-						"OUT %0,%1 \n\t"				// DO DDRD first because in current config it will never actually have both pins so LED can't turn on (not turn of DDRB)
-						"OUT %2,%3 \n\t"				// Ok, LED is on now!
-						"NOP\n\t"						// No delay at all, will be off on next instruction
-						"OUT %2,__zero_reg__ \n\t"		// Do DDRB first since this will definitely turn off the LED
-						"OUT %0,__zero_reg__ \n\t"
-				
-						: :  "I" (_SFR_IO_ADDR(DDRD)) , "r" (ddrdt) , "I" (_SFR_IO_ADDR(DDRB)) , "r" (ddrbt) 
-				
-					);
-				
-				} else {
-					
-					
-					// loop timing here b==1 -> 1+1=2 cycles, b=2 -> 1+2+1+1 =5 cycles, b=3 ->  (1+2)+(1+2)+(1+1)
-					
-					// C is loop count
-					// General case for c>0, delay = (c*3)-1
-					// So c= (b+1)/3
-					
-					byte loopcount = (b+1)/3;
-					byte remander = b - ((loopcount*3) -1 );
-					
-					switch (remander) {
-						
-						case 0:		// No remainder, so just loop and we will get right delay
-						
-							asm volatile (
-							
-								"OUT %0,%1 \n\t"			// DO DDRD first because in current config it will never actually have both pins so LED can't turn on (not turn of DDRB)
-								"OUT %2,%3 \n\t"			// Ok, LED is on now!
-								"L_%=:dec %4 \n\t"			// 1 cycle
-								"BRNE L_%= \n\t"			// 1 on false, 2 on true cycles
-								"OUT %2,__zero_reg__ \n\t"			// Do DDRB first since this will definitely turn off the LED
-								"OUT %0,__zero_reg__ \n\t"
-						
-								: :  "I" (_SFR_IO_ADDR(DDRD)) , "r" (ddrdt) , "I" (_SFR_IO_ADDR(DDRB)) , "r" (ddrbt) , "r" (b)
-										
-							);
-							
-							break;
-						
-						case 1:  // We need 1 extra cycle to come out with the right delay
-						
-							asm volatile (
-							
-								"OUT %0,%1 \n\t"			// DO DDRD first because in current config it will never actually have both pins so LED can't turn on (not turn of DDRB)
-								"OUT %2,%3 \n\t"			// Ok, LED is on now!
-								"NOP\n\t"					// drag our feet one cycle
-								"L_%=:dec %4 \n\t"			// 1 cycle
-								"BRNE L_%= \n\t"			// 1 on false, 2 on true cycles
-								"OUT %2,__zero_reg__ \n\t"			// Do DDRB first since this will definitely turn off the LED
-								"OUT %0,__zero_reg__ \n\t"
-							
-								: :  "I" (_SFR_IO_ADDR(DDRD)) , "r" (ddrdt) , "I" (_SFR_IO_ADDR(DDRB)) , "r" (ddrbt) , "r" (b)
-							
-							);
-							
-							break;
-						
-												
-						case 2:  // We need 2 extra cycles to come out with the right delay
-						
-							asm volatile (
-						
-								"OUT %0,%1 \n\t"			// DO DDRD first because in current config it will never actually have both pins so LED can't turn on (not turn of DDRB)
-								"OUT %2,%3 \n\t"			// Ok, LED is on now!
-								"NOP\n\t"					// drag our feet 2 cycles
-								"NOP\n\t"					
-								"L_%=:dec %4 \n\t"			// 1 cycle
-								"BRNE L_%= \n\t"			// 1 on false, 2 on true cycles
-								"OUT %2,__zero_reg__ \n\t"			// Do DDRB first since this will definitely turn off the LED
-								"OUT %0,__zero_reg__ \n\t"
-						
-								: :  "I" (_SFR_IO_ADDR(DDRD)) , "r" (ddrdt) , "I" (_SFR_IO_ADDR(DDRB)) , "r" (ddrbt) , "r" (b)
-						
-							);
-						
-							break;
-							
-					}
-									
-				}
-		
-			} // b==0
+				DDRD = ddrdt;
+				ledDutyCycle( b , ddrbt );
+				DDRD = 0x00;
+			}
 		}
 		
 		rowDirectionBitsRotating >>= 1;		// Shift bits down so bit 0 has the value for the next row
@@ -548,8 +593,7 @@ void  __attribute__ ((naked)) warmstart(void) {
 	// which might not be long enough for us to do what we need to do before the WatchDog times out and does a reset.
 	
 	// Note that we do not have to set WDTCR because the default timeout is initialized to 16ms after a reset (which is now). This is ~60Hrz display refresh rate.
-	
-	
+		
 	#ifndef PRODUCTION						// In production build, the FUSE will already have us start at full speed
 	
 		CLKPR = _BV(CLKPCE);				// Enable changes to the clock prescaler

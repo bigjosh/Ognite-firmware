@@ -61,46 +61,64 @@ static inline void ledDutyCycle(unsigned char cycles , byte ledonbits )
 				);
 			}
 			break;
+
+		case 3: {
+			
+			__asm__ __volatile__ (
+			"OUT %0,%1 \n\t"				// DO OUTPORT first because in current config it will never actually have both pins so LED can't turn on (not turn of DDRB)
+			"RJMP L_%=\n\t"		// waste 2 cycles - use RJMP rather than 2 NOPS because it uses 1/2 the space
+			"L_%=:OUT %0,__zero_reg__ \n\t"
+			
+			: :  "I" (_SFR_IO_ADDR(LED_DUTY_CYCLE_PORT)) , "r" (ledonbits)
+			
+			);
+		}
+		break;
 		
 		default: {
 			
-				// for any delay greater than 2, we have enough cycles to go though a general loop construct
+				// note that we could make a loop that only uses three cycles, but use 4 makes the math so much easier
+			
+				// for any delay greater than 3, we have enough cycles to go though a general loop construct
 		
 				// Loop delay for loop counter c:
 								
 				// --When c==1---
 				//	loop:   DEC c		// 1 cycle  (c=0)
+				//      NOP             // 1 cycle 
 				//	BRNE loop			// 1 cycle 
 				//                      // =============
-				//                      // 2 cycles total
+				//                      // 3 cycles total
 
 
 				// --When c==2---
 				//	loop:   DEC c		// 1 cycle	(c=1)
 				//	BRNE loop			// 2 cycles (branch taken)
+				//  NOP					// 1 cycle
 				//	loop:   DEC c		// 1 cycle	(c=0)
 				//	BRNE loop			// 1 cycles (branch not taken)
+				//  NOP					// 1 cycle
 				//                      // =============
-				//                      // 5 cycles total
+				//                      // 7 cycles total
 
 				
 				
-				// if c==1 then delay=2 cycles (branch not taken at all)
-				// if c==2 then delay=5 (2+3) cycles
-				// if c==3 then delay=8 (2+3+3)
+				// if c==1 then delay=3 cycles (branch not taken at all)
+				// if c==2 then delay=7 (2+4) cycles
+				// if c==3 then delay=10 (2+4+4)
 								
-				// ...so loop overhead is always 2+(c-1)*3 cycles
+				// ...so loop overhead is always 3+(c-1)*4 cycles
 				
 				// Include the single cycle overhead for the trailing OUT after the loop and we get...
 				
-				// delay = 3+(c-1)*3 
-				// delay = 3+(3*c)-3 
-				// delay = (3*c) 						
-				// delay/3 = c
+				// delay = 4+(c-1)*4 
+				// delay = 4+(4*c)-4 
+				// delay = (4*c) 						
+				// delay/4 = c
 								
-				byte loopcounter = cycles/ (byte) 3;		// TODO: either do faster bit compute here, or store dividends and remainder in lookup 
+				byte loopcounter = cycles/ (byte) 4;		// Compiler should turn this into a shift operation
 			
-				byte remainder = cycles - (loopcounter*3);			// THis is how many cycles we need to pick up the slack to make up for the granularity of the loop 
+				byte remainder = cycles & 0x03 ;			// AND with 0x03 will efficiently return the remainder of divide by 4
 					
 				switch (remainder) {
 						
@@ -109,6 +127,7 @@ static inline void ledDutyCycle(unsigned char cycles , byte ledonbits )
 						__asm__ __volatile__ (
 						"OUT %[port],%[bits] \n\t"			// DO OUTPORT first because in current config it will never actually have both pins so LED can't turn on (not turn of DDRB)
 						"L_%=:dec %[loop]\n\t"			// 1 cycle
+						"NOP \n\r"						// 1 cycle in loop
 						"BRNE L_%= \n\t"			// 1 on false, 2 on true cycles
 						"OUT %[port],__zero_reg__ \n\t"
 						
@@ -122,9 +141,10 @@ static inline void ledDutyCycle(unsigned char cycles , byte ledonbits )
 						
 						__asm__ __volatile__ (
 						"OUT %[port],%[bits] \n\t"			// DO OUTPORT first because in current config it will never actually have both pins so LED can't turn on (not turn of DDRB)
-						"NOP \n\t"		// waste one cycle that will (hopefully) not get optimized out
 						"L_%=:dec %[loop] \n\t"			// 1 cycle
+						"NOP \n\r"						// 1 cycle in loop
 						"BRNE L_%= \n\t"			// 1 on false, 2 on true cycles
+						"NOP \n\r"						// 1 cycle after loop
 						"OUT %[port],__zero_reg__ \n\t"
 						
 						: [loop] "=r" (loopcounter) : [port] "I" (_SFR_IO_ADDR(LED_DUTY_CYCLE_PORT)) , [bits] "r" (ledonbits) , "0" (loopcounter)
@@ -139,9 +159,10 @@ static inline void ledDutyCycle(unsigned char cycles , byte ledonbits )
 						__asm__ __volatile__ (
 						
 						"OUT %[port],%[bits] \n\t"			// DO OUTPORT first because in current config it will never actually have both pins so LED can't turn on (not turn of DDRB)
-						"RJMP L_%=\n\t"					// Waste 2 cycles using half as much space as 2 NOPs 
 						"L_%=:dec %[loop] \n\t"			// 1 cycle
+						"NOP \n\r"						// 1 cycle in loop
 						"BRNE L_%= \n\t"			// 1 on false, 2 on true cycles
+						"RJMP .+0 \r\n"					// 2 cycles after loop (RJMP better than 2 NOPS becuase same time 1/2 the space)
 						"OUT %[port],__zero_reg__ \n\t"
 						
 						: [loop] "=r" (loopcounter) : [port] "I" (_SFR_IO_ADDR(LED_DUTY_CYCLE_PORT)) , [bits] "r" (ledonbits) , "0" (loopcounter)
@@ -150,6 +171,26 @@ static inline void ledDutyCycle(unsigned char cycles , byte ledonbits )
 					}
 					
 					break; 
+
+					case 3:  { // We need 2 extra cycles to come out with the right delay
+						
+						__asm__ __volatile__ (
+						
+						"OUT %[port],%[bits] \n\t"			// DO OUTPORT first because in current config it will never actually have both pins so LED can't turn on (not turn of DDRB)
+						"L_%=:dec %[loop] \n\t"			// 1 cycle
+						"NOP \n\r"						// 1 cycle in loop
+						"BRNE L_%= \n\t"			// 1 on false, 2 on true cycles
+						"RJMP .+0 \r\n"					// 2 cycles after loop (RJMP better than 2 NOPS becuase same time 1/2 the space)
+						"NOP \n\r"						// 1 cycle after loop						
+						"OUT %[port],__zero_reg__ \n\t"
+						
+						: [loop] "=r" (loopcounter) : [port] "I" (_SFR_IO_ADDR(LED_DUTY_CYCLE_PORT)) , [bits] "r" (ledonbits) , "0" (loopcounter)
+						
+						);
+					}
+					
+					break;
+
 						
 				} // switch (remainder)
 		

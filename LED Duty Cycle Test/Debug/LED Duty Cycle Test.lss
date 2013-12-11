@@ -3,31 +3,31 @@ LED Duty Cycle Test.elf:     file format elf32-avr
 
 Sections:
 Idx Name          Size      VMA       LMA       File off  Algn
-  0 .text         00000186  00000000  00000000  00000074  2**1
+  0 .text         000000f4  00000000  00000000  00000074  2**1
                   CONTENTS, ALLOC, LOAD, READONLY, CODE
-  1 .data         00000000  00800060  00000186  000001fa  2**0
+  1 .data         00000000  00800060  000000f4  00000168  2**0
                   CONTENTS, ALLOC, LOAD, DATA
-  2 .stab         000006cc  00000000  00000000  000001fc  2**2
+  2 .stab         000006cc  00000000  00000000  00000168  2**2
                   CONTENTS, READONLY, DEBUGGING
-  3 .stabstr      00000097  00000000  00000000  000008c8  2**0
+  3 .stabstr      00000097  00000000  00000000  00000834  2**0
                   CONTENTS, READONLY, DEBUGGING
-  4 .comment      0000002f  00000000  00000000  0000095f  2**0
+  4 .comment      0000002f  00000000  00000000  000008cb  2**0
                   CONTENTS, READONLY
-  5 .debug_aranges 00000028  00000000  00000000  0000098e  2**0
+  5 .debug_aranges 00000030  00000000  00000000  000008fa  2**0
                   CONTENTS, READONLY, DEBUGGING
-  6 .debug_info   000001fe  00000000  00000000  000009b6  2**0
+  6 .debug_info   000001be  00000000  00000000  0000092a  2**0
                   CONTENTS, READONLY, DEBUGGING
-  7 .debug_abbrev 000000f1  00000000  00000000  00000bb4  2**0
+  7 .debug_abbrev 0000011e  00000000  00000000  00000ae8  2**0
                   CONTENTS, READONLY, DEBUGGING
-  8 .debug_line   00000153  00000000  00000000  00000ca5  2**0
+  8 .debug_line   00000134  00000000  00000000  00000c06  2**0
                   CONTENTS, READONLY, DEBUGGING
-  9 .debug_frame  00000034  00000000  00000000  00000df8  2**2
+  9 .debug_frame  0000004c  00000000  00000000  00000d3c  2**2
                   CONTENTS, READONLY, DEBUGGING
- 10 .debug_str    00000104  00000000  00000000  00000e2c  2**0
+ 10 .debug_str    00000104  00000000  00000000  00000d88  2**0
                   CONTENTS, READONLY, DEBUGGING
- 11 .debug_loc    000001ee  00000000  00000000  00000f30  2**0
+ 11 .debug_loc    000001b4  00000000  00000000  00000e8c  2**0
                   CONTENTS, READONLY, DEBUGGING
- 12 .debug_ranges 00000170  00000000  00000000  0000111e  2**0
+ 12 .debug_ranges 00000020  00000000  00000000  00001040  2**0
                   CONTENTS, READONLY, DEBUGGING
 
 Disassembly of section .text:
@@ -62,374 +62,223 @@ Disassembly of section .text:
   30:	d1 e0       	ldi	r29, 0x01	; 1
   32:	de bf       	out	0x3e, r29	; 62
   34:	cd bf       	out	0x3d, r28	; 61
-  36:	9b d0       	rcall	.+310    	; 0x16e <main>
-  38:	a4 c0       	rjmp	.+328    	; 0x182 <_exit>
+  36:	53 d0       	rcall	.+166    	; 0xde <main>
+  38:	5b c0       	rjmp	.+182    	; 0xf0 <_exit>
 
 0000003a <__bad_interrupt>:
   3a:	e2 cf       	rjmp	.-60     	; 0x0 <__vectors>
 
-0000003c <ledBrightnessLoop>:
-					
-
-
-void ledBrightnessLoop(void) {
-	
-	PORTD = 0x01;		// Trigger Scope
-  3c:	81 e0       	ldi	r24, 0x01	; 1
-  3e:	82 bb       	out	0x12, r24	; 18
-  40:	91 e0       	ldi	r25, 0x01	; 1
-			}
-			break;
-			
-		case 2: {
-		
-				__asm__ __volatile__ (
-  42:	21 e0       	ldi	r18, 0x01	; 1
-  44:	89 2f       	mov	r24, r25
-  46:	81 50       	subi	r24, 0x01	; 1
+0000003c <ledDutyCycle.constprop.1>:
 #define LED_DUTY_CYCLE_PORT (PORTA)
 
 static inline void ledDutyCycle(unsigned char cycles , byte ledonbits )
 {
 	
 	switch (cycles) {
-  48:	81 30       	cpi	r24, 0x01	; 1
-  4a:	09 f1       	breq	.+66     	; 0x8e <L_54+0x16>
-  4c:	81 30       	cpi	r24, 0x01	; 1
-  4e:	c0 f0       	brcs	.+48     	; 0x80 <L_54+0x8>
-  50:	82 30       	cpi	r24, 0x02	; 2
-  52:	09 f4       	brne	.+2      	; 0x56 <__SREG__+0x17>
-  54:	51 c0       	rjmp	.+162    	; 0xf8 <L_210+0x6>
-  56:	83 30       	cpi	r24, 0x03	; 3
-  58:	09 f4       	brne	.+2      	; 0x5c <__SREG__+0x1d>
-  5a:	49 c0       	rjmp	.+146    	; 0xee <L_150+0x20>
-				// delay = 4+(c-1)*4 
-				// delay = 4+(4*c)-4 
-				// delay = (4*c) 						
-				// delay/4 = c
-								
-				byte loopcounter = cycles/ (byte) 4;		// Compiler should turn this into a shift operation
-  5c:	38 2f       	mov	r19, r24
-  5e:	36 95       	lsr	r19
-  60:	36 95       	lsr	r19
-			
-				byte remainder = cycles & 0x03 ;			// AND with 0x03 will efficiently return the remainder of divide by 4
-  62:	83 70       	andi	r24, 0x03	; 3
-					
-				switch (remainder) {
-  64:	82 30       	cpi	r24, 0x02	; 2
-  66:	09 f4       	brne	.+2      	; 0x6a <__SREG__+0x2b>
-  68:	7b c0       	rjmp	.+246    	; 0x160 <__stack+0x1>
-  6a:	83 30       	cpi	r24, 0x03	; 3
-  6c:	09 f4       	brne	.+2      	; 0x70 <__SREG__+0x31>
-  6e:	70 c0       	rjmp	.+224    	; 0x150 <L_299+0xc>
-  70:	81 30       	cpi	r24, 0x01	; 1
-  72:	09 f4       	brne	.+2      	; 0x76 <__SREG__+0x37>
-  74:	66 c0       	rjmp	.+204    	; 0x142 <L_268+0xc>
-						
-					case 0:		{// No remainder, so just loop and we will get right delay
-						
-						__asm__ __volatile__ (
-  76:	2b bb       	out	0x1b, r18	; 27
-
-00000078 <L_54>:
-  78:	3a 95       	dec	r19
-  7a:	00 00       	nop
-  7c:	e9 f7       	brne	.-6      	; 0x78 <L_54>
-  7e:	1b ba       	out	0x1b, r1	; 27
-
-void ledBrightnessLoop(void) {
-	
-	PORTD = 0x01;		// Trigger Scope
-			
-	for(byte x=0;x<255;x++) {
-  80:	9f 3f       	cpi	r25, 0xFF	; 255
-  82:	49 f0       	breq	.+18     	; 0x96 <L_54+0x1e>
-  84:	9f 5f       	subi	r25, 0xFF	; 255
-  86:	89 2f       	mov	r24, r25
-  88:	81 50       	subi	r24, 0x01	; 1
-#define LED_DUTY_CYCLE_PORT (PORTA)
-
-static inline void ledDutyCycle(unsigned char cycles , byte ledonbits )
-{
-	
-	switch (cycles) {
-  8a:	81 30       	cpi	r24, 0x01	; 1
-  8c:	f9 f6       	brne	.-66     	; 0x4c <__SREG__+0xd>
+  3c:	81 30       	cpi	r24, 0x01	; 1
+  3e:	39 f0       	breq	.+14     	; 0x4e <__SREG__+0xf>
+  40:	08 f4       	brcc	.+2      	; 0x44 <__SREG__+0x5>
+  42:	3a c0       	rjmp	.+116    	; 0xb8 <L_97+0xc>
+  44:	82 30       	cpi	r24, 0x02	; 2
+  46:	31 f0       	breq	.+12     	; 0x54 <__SREG__+0x15>
+  48:	83 30       	cpi	r24, 0x03	; 3
+  4a:	71 f4       	brne	.+28     	; 0x68 <L_37+0x4>
+  4c:	08 c0       	rjmp	.+16     	; 0x5e <__SREG__+0x1f>
 			break; 
 		
 		
 		case 1:	{	
 					
 				__asm__ __volatile__ (
-  8e:	8b bb       	out	0x1b, r24	; 27
-  90:	1b ba       	out	0x1b, r1	; 27
-  92:	9f 5f       	subi	r25, 0xFF	; 255
-  94:	f8 cf       	rjmp	.-16     	; 0x86 <L_54+0xe>
-			
-	for(byte x=0;x<255;x++) {
-		ledDutyCycle(x,0x01);		//1-255						
-	}
-	
-	PORTD = 0x00;		// Trigger Scope
-  96:	12 ba       	out	0x12, r1	; 18
-  98:	91 e0       	ldi	r25, 0x01	; 1
+  4e:	8b bb       	out	0x1b, r24	; 27
+  50:	1b ba       	out	0x1b, r1	; 27
+  52:	08 95       	ret
 			}
 			break;
 			
 		case 2: {
 		
 				__asm__ __volatile__ (
-  9a:	21 e0       	ldi	r18, 0x01	; 1
-  9c:	89 2f       	mov	r24, r25
-  9e:	81 50       	subi	r24, 0x01	; 1
-#define LED_DUTY_CYCLE_PORT (PORTA)
+  54:	81 e0       	ldi	r24, 0x01	; 1
+  56:	8b bb       	out	0x1b, r24	; 27
+  58:	00 00       	nop
+  5a:	1b ba       	out	0x1b, r1	; 27
+  5c:	08 95       	ret
+			}
+			break;
 
-static inline void ledDutyCycle(unsigned char cycles , byte ledonbits )
-{
-	
-	switch (cycles) {
-  a0:	81 30       	cpi	r24, 0x01	; 1
-  a2:	01 f1       	breq	.+64     	; 0xe4 <L_150+0x16>
-  a4:	81 30       	cpi	r24, 0x01	; 1
-  a6:	b8 f0       	brcs	.+46     	; 0xd6 <L_150+0x8>
-  a8:	82 30       	cpi	r24, 0x02	; 2
-  aa:	09 f4       	brne	.+2      	; 0xae <L_54+0x36>
-  ac:	2f c0       	rjmp	.+94     	; 0x10c <L_232+0x6>
-  ae:	83 30       	cpi	r24, 0x03	; 3
-  b0:	41 f1       	breq	.+80     	; 0x102 <L_210+0x10>
+		case 3: {
+			
+			__asm__ __volatile__ (
+  5e:	81 e0       	ldi	r24, 0x01	; 1
+  60:	8b bb       	out	0x1b, r24	; 27
+  62:	00 c0       	rjmp	.+0      	; 0x64 <L_37>
+
+00000064 <L_37>:
+  64:	1b ba       	out	0x1b, r1	; 27
+  66:	08 95       	ret
 				// delay = 4+(c-1)*4 
 				// delay = 4+(4*c)-4 
 				// delay = (4*c) 						
 				// delay/4 = c
 								
 				byte loopcounter = cycles/ (byte) 4;		// Compiler should turn this into a shift operation
-  b2:	38 2f       	mov	r19, r24
-  b4:	36 95       	lsr	r19
-  b6:	36 95       	lsr	r19
+  68:	98 2f       	mov	r25, r24
+  6a:	96 95       	lsr	r25
+  6c:	96 95       	lsr	r25
 			
 				byte remainder = cycles & 0x03 ;			// AND with 0x03 will efficiently return the remainder of divide by 4
-  b8:	83 70       	andi	r24, 0x03	; 3
+  6e:	83 70       	andi	r24, 0x03	; 3
 					
 				switch (remainder) {
-  ba:	82 30       	cpi	r24, 0x02	; 2
-  bc:	09 f4       	brne	.+2      	; 0xc0 <L_54+0x48>
-  be:	33 c0       	rjmp	.+102    	; 0x126 <L_252+0xe>
-  c0:	83 30       	cpi	r24, 0x03	; 3
-  c2:	09 f4       	brne	.+2      	; 0xc6 <L_54+0x4e>
-  c4:	28 c0       	rjmp	.+80     	; 0x116 <L_232+0x10>
-  c6:	81 30       	cpi	r24, 0x01	; 1
-  c8:	09 f4       	brne	.+2      	; 0xcc <L_54+0x54>
-  ca:	34 c0       	rjmp	.+104    	; 0x134 <L_260+0xc>
+  70:	82 30       	cpi	r24, 0x02	; 2
+  72:	91 f0       	breq	.+36     	; 0x98 <L_76+0xc>
+  74:	83 30       	cpi	r24, 0x03	; 3
+  76:	c1 f0       	breq	.+48     	; 0xa8 <L_86+0xc>
+  78:	81 30       	cpi	r24, 0x01	; 1
+  7a:	39 f0       	breq	.+14     	; 0x8a <L_67+0xa>
 						
 					case 0:		{// No remainder, so just loop and we will get right delay
 						
 						__asm__ __volatile__ (
-  cc:	2b bb       	out	0x1b, r18	; 27
+  7c:	81 e0       	ldi	r24, 0x01	; 1
+  7e:	8b bb       	out	0x1b, r24	; 27
 
-000000ce <L_150>:
-  ce:	3a 95       	dec	r19
-  d0:	00 00       	nop
-  d2:	e9 f7       	brne	.-6      	; 0xce <L_150>
-  d4:	1b ba       	out	0x1b, r1	; 27
-		ledDutyCycle(x,0x01);		//1-255						
-	}
-	
-	PORTD = 0x00;		// Trigger Scope
-
-	for(byte x=0;x<255;x++) {
-  d6:	9f 3f       	cpi	r25, 0xFF	; 255
-  d8:	49 f0       	breq	.+18     	; 0xec <L_150+0x1e>
-  da:	9f 5f       	subi	r25, 0xFF	; 255
-  dc:	89 2f       	mov	r24, r25
-  de:	81 50       	subi	r24, 0x01	; 1
-#define LED_DUTY_CYCLE_PORT (PORTA)
-
-static inline void ledDutyCycle(unsigned char cycles , byte ledonbits )
-{
-	
-	switch (cycles) {
-  e0:	81 30       	cpi	r24, 0x01	; 1
-  e2:	01 f7       	brne	.-64     	; 0xa4 <L_54+0x2c>
-			break; 
-		
-		
-		case 1:	{	
-					
-				__asm__ __volatile__ (
-  e4:	8b bb       	out	0x1b, r24	; 27
-  e6:	1b ba       	out	0x1b, r1	; 27
-  e8:	9f 5f       	subi	r25, 0xFF	; 255
-  ea:	f8 cf       	rjmp	.-16     	; 0xdc <L_150+0xe>
-	for(byte x=0;x<255;x++) {
-		ledDutyCycle(x,0x01);		//1-255
-	}
-
-
-}
-  ec:	08 95       	ret
-			}
-			break;
-
-		case 3: {
-			
-			__asm__ __volatile__ (
-  ee:	2b bb       	out	0x1b, r18	; 27
-  f0:	00 c0       	rjmp	.+0      	; 0xf2 <L_210>
-
-000000f2 <L_210>:
-  f2:	1b ba       	out	0x1b, r1	; 27
-  f4:	9f 5f       	subi	r25, 0xFF	; 255
-  f6:	c7 cf       	rjmp	.-114    	; 0x86 <L_54+0xe>
-			}
-			break;
-			
-		case 2: {
-		
-				__asm__ __volatile__ (
-  f8:	2b bb       	out	0x1b, r18	; 27
-  fa:	00 00       	nop
-  fc:	1b ba       	out	0x1b, r1	; 27
-  fe:	9f 5f       	subi	r25, 0xFF	; 255
- 100:	c2 cf       	rjmp	.-124    	; 0x86 <L_54+0xe>
-			}
-			break;
-
-		case 3: {
-			
-			__asm__ __volatile__ (
- 102:	2b bb       	out	0x1b, r18	; 27
- 104:	00 c0       	rjmp	.+0      	; 0x106 <L_232>
-
-00000106 <L_232>:
- 106:	1b ba       	out	0x1b, r1	; 27
- 108:	9f 5f       	subi	r25, 0xFF	; 255
- 10a:	e8 cf       	rjmp	.-48     	; 0xdc <L_150+0xe>
-			}
-			break;
-			
-		case 2: {
-		
-				__asm__ __volatile__ (
- 10c:	2b bb       	out	0x1b, r18	; 27
- 10e:	00 00       	nop
- 110:	1b ba       	out	0x1b, r1	; 27
- 112:	9f 5f       	subi	r25, 0xFF	; 255
- 114:	e3 cf       	rjmp	.-58     	; 0xdc <L_150+0xe>
-					
-					break; 
-
-					case 3:  { // We need 2 extra cycles to come out with the right delay
-						
-						__asm__ __volatile__ (
- 116:	2b bb       	out	0x1b, r18	; 27
-
-00000118 <L_252>:
- 118:	3a 95       	dec	r19
- 11a:	00 00       	nop
- 11c:	e9 f7       	brne	.-6      	; 0x118 <L_252>
- 11e:	00 c0       	rjmp	.+0      	; 0x120 <L_252+0x8>
- 120:	00 00       	nop
- 122:	1b ba       	out	0x1b, r1	; 27
- 124:	d8 cf       	rjmp	.-80     	; 0xd6 <L_150+0x8>
-					break;
-						
-						
-					case 2:  { // We need 2 extra cycles to come out with the right delay
-						
-						__asm__ __volatile__ (
- 126:	2b bb       	out	0x1b, r18	; 27
-
-00000128 <L_260>:
- 128:	3a 95       	dec	r19
- 12a:	00 00       	nop
- 12c:	e9 f7       	brne	.-6      	; 0x128 <L_260>
- 12e:	00 c0       	rjmp	.+0      	; 0x130 <L_260+0x8>
- 130:	1b ba       	out	0x1b, r1	; 27
- 132:	d1 cf       	rjmp	.-94     	; 0xd6 <L_150+0x8>
+00000080 <L_67>:
+  80:	9a 95       	dec	r25
+  82:	00 00       	nop
+  84:	e9 f7       	brne	.-6      	; 0x80 <L_67>
+  86:	1b ba       	out	0x1b, r1	; 27
+  88:	08 95       	ret
 					}
 					break;
 						
 					case 1:  {// We need 1 extra cycle to come out with the right delay
 						
 						__asm__ __volatile__ (
- 134:	8b bb       	out	0x1b, r24	; 27
+  8a:	8b bb       	out	0x1b, r24	; 27
 
-00000136 <L_268>:
- 136:	3a 95       	dec	r19
- 138:	00 00       	nop
- 13a:	e9 f7       	brne	.-6      	; 0x136 <L_268>
- 13c:	00 00       	nop
- 13e:	1b ba       	out	0x1b, r1	; 27
- 140:	ca cf       	rjmp	.-108    	; 0xd6 <L_150+0x8>
- 142:	8b bb       	out	0x1b, r24	; 27
-
-00000144 <L_299>:
- 144:	3a 95       	dec	r19
- 146:	00 00       	nop
- 148:	e9 f7       	brne	.-6      	; 0x144 <L_299>
- 14a:	00 00       	nop
- 14c:	1b ba       	out	0x1b, r1	; 27
- 14e:	98 cf       	rjmp	.-208    	; 0x80 <L_54+0x8>
-					
-					break; 
-
-					case 3:  { // We need 2 extra cycles to come out with the right delay
-						
-						__asm__ __volatile__ (
- 150:	2b bb       	out	0x1b, r18	; 27
-
-00000152 <L_307>:
- 152:	3a 95       	dec	r19
- 154:	00 00       	nop
- 156:	e9 f7       	brne	.-6      	; 0x152 <L_307>
- 158:	00 c0       	rjmp	.+0      	; 0x15a <L_307+0x8>
- 15a:	00 00       	nop
- 15c:	1b ba       	out	0x1b, r1	; 27
- 15e:	90 cf       	rjmp	.-224    	; 0x80 <L_54+0x8>
+0000008c <L_76>:
+  8c:	9a 95       	dec	r25
+  8e:	00 00       	nop
+  90:	e9 f7       	brne	.-6      	; 0x8c <L_76>
+  92:	00 00       	nop
+  94:	1b ba       	out	0x1b, r1	; 27
+  96:	08 95       	ret
 					break;
 						
 						
 					case 2:  { // We need 2 extra cycles to come out with the right delay
 						
 						__asm__ __volatile__ (
- 160:	2b bb       	out	0x1b, r18	; 27
+  98:	81 e0       	ldi	r24, 0x01	; 1
+  9a:	8b bb       	out	0x1b, r24	; 27
 
-00000162 <L_315>:
- 162:	3a 95       	dec	r19
- 164:	00 00       	nop
- 166:	e9 f7       	brne	.-6      	; 0x162 <L_315>
- 168:	00 c0       	rjmp	.+0      	; 0x16a <L_315+0x8>
- 16a:	1b ba       	out	0x1b, r1	; 27
- 16c:	89 cf       	rjmp	.-238    	; 0x80 <L_54+0x8>
+0000009c <L_86>:
+  9c:	9a 95       	dec	r25
+  9e:	00 00       	nop
+  a0:	e9 f7       	brne	.-6      	; 0x9c <L_86>
+  a2:	00 c0       	rjmp	.+0      	; 0xa4 <L_86+0x8>
+  a4:	1b ba       	out	0x1b, r1	; 27
+  a6:	08 95       	ret
+					
+					break; 
 
-0000016e <main>:
+					case 3:  { // We need 2 extra cycles to come out with the right delay
+						
+						__asm__ __volatile__ (
+  a8:	81 e0       	ldi	r24, 0x01	; 1
+  aa:	8b bb       	out	0x1b, r24	; 27
+
+000000ac <L_97>:
+  ac:	9a 95       	dec	r25
+  ae:	00 00       	nop
+  b0:	e9 f7       	brne	.-6      	; 0xac <L_97>
+  b2:	00 c0       	rjmp	.+0      	; 0xb4 <L_97+0x8>
+  b4:	00 00       	nop
+  b6:	1b ba       	out	0x1b, r1	; 27
+  b8:	08 95       	ret
+
+000000ba <ledBrightnessLoop>:
+				
 }
+					
+
+
+void ledBrightnessLoop(void) {
+  ba:	cf 93       	push	r28
+	
+	PORTD = 0x01;		// Trigger Scope
+  bc:	81 e0       	ldi	r24, 0x01	; 1
+  be:	82 bb       	out	0x12, r24	; 18
+			
+	for(byte x=0;x<255;x++) {
+  c0:	c0 e0       	ldi	r28, 0x00	; 0
+		ledDutyCycle(x,0x01);		//1-255						
+  c2:	8c 2f       	mov	r24, r28
+  c4:	bb df       	rcall	.-138    	; 0x3c <ledDutyCycle.constprop.1>
+
+void ledBrightnessLoop(void) {
+	
+	PORTD = 0x01;		// Trigger Scope
+			
+	for(byte x=0;x<255;x++) {
+  c6:	cf 5f       	subi	r28, 0xFF	; 255
+  c8:	cf 3f       	cpi	r28, 0xFF	; 255
+  ca:	d9 f7       	brne	.-10     	; 0xc2 <ledBrightnessLoop+0x8>
+		ledDutyCycle(x,0x01);		//1-255						
+	}
+	
+	PORTD = 0x00;		// Trigger Scope
+  cc:	12 ba       	out	0x12, r1	; 18
+
+	for(byte x=0;x<255;x++) {
+  ce:	c0 e0       	ldi	r28, 0x00	; 0
+		ledDutyCycle(x,0x01);		//1-255
+  d0:	8c 2f       	mov	r24, r28
+  d2:	b4 df       	rcall	.-152    	; 0x3c <ledDutyCycle.constprop.1>
+		ledDutyCycle(x,0x01);		//1-255						
+	}
+	
+	PORTD = 0x00;		// Trigger Scope
+
+	for(byte x=0;x<255;x++) {
+  d4:	cf 5f       	subi	r28, 0xFF	; 255
+  d6:	cf 3f       	cpi	r28, 0xFF	; 255
+  d8:	d9 f7       	brne	.-10     	; 0xd0 <ledBrightnessLoop+0x16>
+		ledDutyCycle(x,0x01);		//1-255
+	}
+
+
+}
+  da:	cf 91       	pop	r28
+  dc:	08 95       	ret
+
+000000de <main>:
 
 
 int main(void) {
 		
 	CLKPR = _BV(CLKPCE);				// Enable changes to the clock prescaler
- 16e:	80 e8       	ldi	r24, 0x80	; 128
- 170:	86 bd       	out	0x26, r24	; 38
+  de:	80 e8       	ldi	r24, 0x80	; 128
+  e0:	86 bd       	out	0x26, r24	; 38
 	CLKPR = 0;							// Set prescaler to 1, we will run full speed
- 172:	16 bc       	out	0x26, r1	; 38
+  e2:	16 bc       	out	0x26, r1	; 38
 
 	// Enable output on PORTA0
 	DDRD = 0x01; 
- 174:	81 e0       	ldi	r24, 0x01	; 1
- 176:	81 bb       	out	0x11, r24	; 17
+  e4:	81 e0       	ldi	r24, 0x01	; 1
+  e6:	81 bb       	out	0x11, r24	; 17
 	DDRA = 0x03;
- 178:	83 e0       	ldi	r24, 0x03	; 3
- 17a:	8a bb       	out	0x1a, r24	; 26
+  e8:	83 e0       	ldi	r24, 0x03	; 3
+  ea:	8a bb       	out	0x1a, r24	; 26
 
 	while(1) ledBrightnessLoop();
- 17c:	5f df       	rcall	.-322    	; 0x3c <ledBrightnessLoop>
- 17e:	5e df       	rcall	.-324    	; 0x3c <ledBrightnessLoop>
- 180:	fd cf       	rjmp	.-6      	; 0x17c <main+0xe>
+  ec:	e6 df       	rcall	.-52     	; 0xba <ledBrightnessLoop>
+  ee:	fe cf       	rjmp	.-4      	; 0xec <main+0xe>
 
-00000182 <_exit>:
- 182:	f8 94       	cli
+000000f0 <_exit>:
+  f0:	f8 94       	cli
 
-00000184 <__stop_program>:
- 184:	ff cf       	rjmp	.-2      	; 0x184 <__stop_program>
+000000f2 <__stop_program>:
+  f2:	ff cf       	rjmp	.-2      	; 0xf2 <__stop_program>

@@ -36,11 +36,9 @@
 #include "candle.h"
 #include "videoBitstream.h"
 
-//#define PRODUCTION				// Production burn?
-
-#ifdef PRODUCTION
+#ifndef DEBUG
 	FUSES = {
-		.low = (FUSE_SUT1 & FUSE_SUT0 & FUSE_CKSEL3 & FUSE_CKSEL1 & FUSE_CKSEL0),			// Startup with clock/8, no startup delay, 8Mhz internal RC
+		.low = (FUSE_SUT1 & FUSE_SUT0 & FUSE_CKSEL3 & FUSE_CKSEL1 & FUSE_CKSEL0),						// Startup with full speed, no startup delay, 8Mhz internal RC
 		.high =  HFUSE_DEFAULT,
 		.extended = EFUSE_DEFAULT
 	};
@@ -471,7 +469,7 @@ void  __attribute__ ((naked)) warmstart(void) {
 	// which might not be long enough for us to do what we need to do before the WatchDog times out and does a reset.
 	
 	// Note that we do not have to set WDTCR because the default timeout is initialized to 16ms after a reset (which is now). This is ~60Hrz display refresh rate.
-	#ifndef PRODUCTION						// In production build, the FUSE will already have us start at full speed
+	#ifdef DEBUG							// In production build, the FUSE will already have us start at full speed
 		CLKPR = _BV(CLKPCE);				// Enable changes to the clock prescaler
 		CLKPR = 0;							// Set prescaler to 1, we will run full speed						
 											// TODO: Check if running full speed uses more power than doing same work longer at half speed

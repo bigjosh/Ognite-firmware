@@ -85,9 +85,11 @@ byte fda[FDA_SIZE];
 
 #define REFRESH_RATE ( (byte) 62 )			// Display Refresh rate in Hz (picked to match the fastest we can get WDT wakeups)
 
+#ifdef DEBUG
 #define TIMECHECK 1				// Twittle bits so we can watch timing on an osciliscope
 								// PA0 (pin 5) goes high while we are in the screen refreshing/PWM interrupt routine
 								// PA1 (pin 4) goes high while we are decoding the next frame to be displayed
+#endif
 
 #define NOP __asm__("nop\n\t")
 

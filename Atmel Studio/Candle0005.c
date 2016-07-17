@@ -114,16 +114,24 @@ static inline void nextFrame(void) {
 	  }
 	  
 	  // TODO: this diagnostic screen generator costs 42 bytes. Can we make it smaller or just get rid of it?
-	  // TODO: For production version, probably take out brightness test but first make sure 5 bits is really visible. 
-		
+
+#ifdef DEBUG		
 	  if (diagPos<(FDA_SIZE*4)) {		// We are currently generating the startup diagnostics screens
+#else
+      if (diagPos<(FDA_SIZE*2)) {
+#endif
 		  
 		  if (diagPos<FDA_SIZE) {						// Fill screen in with pixels
 			  fda[diagPos] = FULL_ON_DUTYCYCLE;
 
+#ifdef DEBUG
 		  } else if (diagPos<FDA_SIZE*2) {				// Empty out
+#else
+		  } else {
+#endif
 			  fda[(diagPos)-FDA_SIZE] = 0;
 
+#ifdef DEBUG
 		  } else /* if (diagPos>=FDA_SIZE*2) && (diagPos<FDA_SIZE*4) */ {										// Brightness test pattern
 				byte step=( diagPos-(FDA_SIZE*2) );
 				byte fdaptr = 0;
@@ -137,6 +145,7 @@ static inline void nextFrame(void) {
 
 					step++;
 				}
+#endif
 		  }
 			  
 		  diagPos++;

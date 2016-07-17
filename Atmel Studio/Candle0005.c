@@ -386,7 +386,7 @@ static inline void refreshScreenClean(void)
 	
 	for( byte y = 0 ; y < FDA_Y_MAX ; y++ ) {
 		byte portBRowBitsCache = portBRowBits[y]; 
-		byte portDRowBitsCache = portBRowBits[y]; 
+		byte portDRowBitsCache = portDRowBits[y]; 
 		
 		for( byte x = 0 ; x < FDA_X_MAX ; x++) {
 			// get the brightness of the current LED
